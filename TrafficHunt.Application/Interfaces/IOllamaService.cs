@@ -18,4 +18,11 @@ public interface IOllamaService
         string commentText,
         string painPoint,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// From a plain-English description of what's being promoted, generate a full campaign
+    /// skeleton (product, audience, problems, discovery keywords) as structured JSON.
+    /// </summary>
+    Task<CampaignDraft> GenerateCampaignAsync(string description, CancellationToken ct = default);
 }
+

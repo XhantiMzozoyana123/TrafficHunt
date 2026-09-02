@@ -10,7 +10,8 @@ public interface ICampaignService
     Task<Campaign> CreateAsync(Campaign campaign, CancellationToken ct = default);
     Task<Campaign?> UpdateAsync(Campaign campaign, CancellationToken ct = default);
     Task<bool> DeleteAsync(int id, CancellationToken ct = default);
-    Task<CampaignKeyword> AddKeywordAsync(int campaignId, string keyword, CancellationToken ct = default);
+            Task<CampaignKeyword> AddKeywordAsync(int campaignId, string keyword, CancellationToken ct = default);
     Task<bool> RemoveKeywordAsync(int keywordId, CancellationToken ct = default);
     Task<CampaignStats> GetStatsAsync(int campaignId, CancellationToken ct = default);
+    Task AddProblemsAsync(int campaignId, IEnumerable<string> problems, CancellationToken ct = default);
 }

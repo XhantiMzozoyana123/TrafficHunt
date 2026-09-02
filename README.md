@@ -82,14 +82,35 @@ automatically), YouTube OAuth replies, and an **MCP server** so an AI assistant 
 engine (`get_campaign`, `search_youtube`, `find_prospects`, …) through the same Application
 services the REST API uses.
 
+## The Operator Workflow
+
+The whole point: **you type what you're promoting in plain English, and the AI does the rest.**
+
+```
+You: "A video outreach tool for freelance video editors struggling to find clients on YouTube"
+    ↓
+AI (via MCP): generates campaign → audience → problems → keywords
+    ↓
+YoutubeExplode: searches videos per keyword
+    ↓
+YouTube Data API v3: collects comments
+    ↓
+Ollama: qualifies each comment — is this person looking for your solution?
+    ↓
+Prospects (MySQL), ranked by intent score
+```
+
+The MCP server (`TrafficHunt.Mcp`) exposes this as a single `promote` tool — the AI calls it with your description and gets back the ranked prospect list. No manual keyword editing, no hand-crafting search terms.
+
 ## Projects
 
 | Project | Responsibility |
 | --- | --- |
-| `TrafficHunt.Domain` | Entities: Campaign, CampaignKeyword, Prospect, Video, Comment |
+| `TrafficHunt.Domain` | Entities: Campaign, CampaignKeyword, CampaignProblem, Prospect, Video, Comment |
 | `TrafficHunt.Application` | Use cases, service + repository interfaces, DTOs |
 | `TrafficHunt.Infrastructure` | MySQL (Pomelo), YoutubeExplode, YouTube Data API, Ollama |
 | `TrafficHunt.Web` | ASP.NET Core controllers, DI composition root |
+| `TrafficHunt.Mcp` | MCP server — AI operator interface (JSON-RPC over stdio) |
 | `TrafficHunt.React` | Dashboard, Campaigns, Prospects UI |
 
 ## Setup
@@ -152,6 +173,38 @@ npm run dev
 
 The dev server proxies `/api` to `http://localhost:5000`.
 
+### Running the MCP Server
+
+The MCP server is a console app that speaks JSON-RPC over stdio. Point your AI client (e.g. Claude Desktop, Cursor, VS Code) at it:
+
+```powershell
+dotnet run --project TrafficHunt.Mcp
+```
+
+Or configure it in your client's settings (example for Claude Desktop's `claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "TrafficHunt": {
+      "command": "dotnet",
+      "args": ["run", "--project", "C:\\Users\\Xhanti\\source\\repos\\TrafficHunt\\TrafficHunt.Mcp"]
+    }
+  }
+}
+```
+
+### MCP Tools
+
+| Tool | Purpose |
+| --- | --- |
+| `promote` | **Primary entry point.** Give it a plain-English description of what you're promoting — the AI generates the campaign, runs discovery, and returns ranked prospects. |
+| `find_prospects` | List prospects for a campaign (filter by intent score or status). |
+| `get_prospect` | Get full details of a single prospect. |
+| `generate_reply` | Generate a personalized outreach reply (Milestone 2). |
+| `update_prospect_status` | Move a prospect through the pipeline (New → Contacted → Interested → Converted/Rejected). |
+| `get_campaign` | Get campaign configuration and global stats. |
+
 ## API Surface (Milestone 1)
 
 | Method | Route | Purpose |
@@ -169,7 +222,7 @@ The dev server proxies `/api` to `http://localhost:5000`.
 
 - **Milestone 1** ✅ — Campaigns → discovery → AI qualification → prospects
 - **Milestone 2** — Reply generation, review editor, YouTube OAuth, approved replies
-- **Milestone 3** — MCP server: the AI as TrafficHunt operator
+- **Milestone 3** ✅ — MCP server: the AI as TrafficHunt operator (`promote` drives the whole pipeline)
 
 ## Human Approval Boundary
 

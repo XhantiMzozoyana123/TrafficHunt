@@ -47,4 +47,11 @@ public class CampaignService : ICampaignService
 
     public Task<CampaignStats> GetStatsAsync(int campaignId, CancellationToken ct = default) =>
         _prospects.GetCampaignStatsAsync(campaignId, ct);
+
+    public async Task AddProblemsAsync(int campaignId, IEnumerable<string> problems, CancellationToken ct = default)
+    {
+        var cleaned = problems.Select(p => p?.Trim()).Where(p => !string.IsNullOrWhiteSpace(p));
+        foreach (var problem in cleaned)
+            await _campaigns.AddProblemAsync(campaignId, problem!, ct);
+    }
 }

@@ -7,8 +7,8 @@ using TrafficHunt.Application.Interfaces;
 namespace TrafficHunt.Infrastructure.Ai;
 
 /// <summary>
-/// Talks to a local Ollama server (default http://localhost:11434).
-/// Configuration lives in appsettings.json under "Ollama".
+/// Talks to a local/remote Ollama server configured under "Ollama" in appsettings.json.
+/// Sends requests to POST /api/generate with { model, prompt, stream:false, format:"json" }.
 /// </summary>
 public class OllamaService : IOllamaService
 {
@@ -18,13 +18,15 @@ public class OllamaService : IOllamaService
     public OllamaService(HttpClient http, IConfiguration configuration)
     {
         _http = http;
-        _model = configuration["Ollama:Model"] ?? "llama3.1";
+        _model = configuration["Ollama:Model"] ?? "llama3";
     }
 
     public async Task<QualificationResult> QualifyCommentAsync(
         string campaignContext, string videoTitle, string commentText, CancellationToken ct = default)
     {
-        const string exampleJson = "{ \"is_target_audience\": true, \"has_relevant_problem\": true, \"intent_score\": 94, \"pain_point\": \"...\", \"reason\": \"...\" }";
+        const string exampleJson =
+            "{ \"is_target_audience\": true, \"has_relevant_problem\": true, " +
+            "\"intent_score\": 94, \"pain_point\": \"...\", \"reason\": \"...\" }";
 
         var prompt = $"""
             You are a customer-acquisition analyst. Analyze the YouTube comment below.
@@ -51,11 +53,7 @@ public class OllamaService : IOllamaService
             """;
 
         var json = await GenerateAsync(prompt, ct);
-
-        try
-        {
-            return ParseQualification(json);
-        }
+        try { return ParseQualification(json); }
         catch (JsonException ex)
         {
             throw new InvalidOperationException("Ollama returned an invalid qualification response.", ex);
@@ -84,6 +82,42 @@ public class OllamaService : IOllamaService
 
         return (await GenerateAsync(prompt, ct)).Trim();
     }
+        public async Task<CampaignDraft> GenerateCampaignAsync(string description, CancellationToken ct = default)
+    {
+        const string exampleJson =
+            "{ \"name\":\"...\"," +
+            "\"productName\":\"...\"," +
+            "\"productUrl\":\"...\"," +
+            "\"productDescription\":\"...\"," +
+            "\"valueProposition\":\"...\"," +
+            "\"targetAudience\":\"...\"," +
+            "\"primaryProblem\":\"...\"," +
+            "\"problems\":[\"...\"]," +
+            "\"keywords\":[\"...\"],\"reasoning\":\".\"}";
+
+        var prompt = $"""
+            You are a growth-strategy planner for a private customer-acquisition tool.
+            Convert the description below into a structured campaign for finding prospects on
+            YouTube who are actively looking for the promoted solution.
+
+            DESCRIPTION:
+            {description}
+
+            Produce two parts:
+            1. A short list of 6-12 concrete YouTube search keywords (discovery terms real people would type).
+            2. The campaign fields shown in the JSON example. Keep problems concise.
+
+            Return ONLY the JSON object below (valid JSON, no markdown):
+                        {exampleJson}
+            """;
+
+        var json = await GenerateAsync(prompt, ct);
+        try { return ParseCampaignDraft(json); }
+        catch (JsonException ex)
+        {
+            throw new InvalidOperationException("Ollama returned an invalid campaign plan response.", ex);
+        }
+    }
 
     private async Task<string> GenerateAsync(string prompt, CancellationToken ct)
     {
@@ -104,17 +138,21 @@ public class OllamaService : IOllamaService
         return doc.RootElement.GetProperty("response").GetString() ?? string.Empty;
     }
 
-    private static QualificationResult ParseQualification(string json)
+    private static T ParseJson<T>(string json)
     {
-        // Ollama can wrap JSON in markdown fences or preamble - find the object.
+        // Ollama may wrap JSON in markdown fences or preamble - locate the object.
         var start = json.IndexOf('{');
         var end = json.LastIndexOf('}');
         if (start < 0 || end <= start)
             throw new JsonException("No JSON object found in response.");
 
-        using var doc = JsonDocument.Parse(json[start..(end + 1)]);
-        var root = doc.RootElement;
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        return JsonSerializer.Deserialize<T>(json[start..(end + 1)], options)!;
+    }
 
+    private static QualificationResult ParseQualification(string json)
+    {
+        var root = ParseJson<JsonElement>(json);
         return new QualificationResult
         {
             IsTargetAudience = root.TryGetProperty("is_target_audience", out var t) && t.GetBoolean(),
@@ -122,6 +160,27 @@ public class OllamaService : IOllamaService
             IntentScore = root.TryGetProperty("intent_score", out var s) ? s.GetInt32() : 0,
             PainPoint = root.TryGetProperty("pain_point", out var pp) ? pp.GetString() ?? string.Empty : string.Empty,
             Reason = root.TryGetProperty("reason", out var r) ? r.GetString() ?? string.Empty : string.Empty
+        };
+    }
+
+    private static CampaignDraft ParseCampaignDraft(string json)
+    {
+        var root = ParseJson<JsonElement>(json);
+
+        string[] ToStringArray(JsonElement el, string prop) =>
+            el.TryGetProperty(prop, out var arr) ? arr.EnumerateArray().Select(x => x.GetString() ?? "").ToArray() : [];
+
+        return new CampaignDraft
+        {
+            Name = root.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "",
+            ProductName = root.TryGetProperty("productName", out var pn) ? pn.GetString() ?? "" : "",
+            ProductUrl = root.TryGetProperty("productUrl", out var pu) ? pu.GetString() ?? "" : "",
+            ProductDescription = root.TryGetProperty("productDescription", out var pd) ? pd.GetString() ?? "" : "",
+            ValueProposition = root.TryGetProperty("valueProposition", out var vp) ? vp.GetString() ?? "" : "",
+            TargetAudience = root.TryGetProperty("targetAudience", out var ta) ? ta.GetString() ?? "" : "",
+            PrimaryProblem = root.TryGetProperty("primaryProblem", out var pp) ? pp.GetString() ?? "" : "",
+            Problems = ToStringArray(root, "problems").ToList(),
+            Keywords = ToStringArray(root, "keywords").ToList()
         };
     }
 }

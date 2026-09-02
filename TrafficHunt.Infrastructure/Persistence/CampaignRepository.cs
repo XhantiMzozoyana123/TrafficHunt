@@ -78,7 +78,7 @@ public class CampaignRepository : ICampaignRepository
             Active = true
         };
         _db.CampaignKeywords.Add(keywordEntity);
-        await _db.SaveChangesAsync(ct);
+                await _db.SaveChangesAsync(ct);
         return keywordEntity;
     }
 
@@ -89,5 +89,13 @@ public class CampaignRepository : ICampaignRepository
         _db.CampaignKeywords.Remove(keyword);
         await _db.SaveChangesAsync(ct);
         return true;
+    }
+
+    public async Task<CampaignProblem> AddProblemAsync(int campaignId, string problem, CancellationToken ct = default)
+    {
+        var entity = new CampaignProblem { CampaignId = campaignId, Text = problem };
+        _db.CampaignProblems.Add(entity);
+        await _db.SaveChangesAsync(ct);
+        return entity;
     }
 }
