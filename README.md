@@ -68,6 +68,15 @@ Ollama → qualify each comment (structured JSON):
 Prospects (MySQL), ranked by intent score
 ```
 
+### Why comments come from the Data API
+
+Modern YoutubeExplode (6.x) removed comment extraction entirely — verified against the
+shipped assemblies (no comment types or endpoints remain in the library). So the split is:
+
+- **YoutubeExplode** — passive discovery only (video search). It has *no write capability*.
+- **YouTube Data API v3** — comment collection (`commentThreads`, 1 quota unit per call)
+  and, in Milestone 2, the **only** write path (OAuth replies, gated by user approval).
+
 Later milestones: AI reply generation with **human approval** (the AI never publishes outreach
 automatically), YouTube OAuth replies, and an **MCP server** so an AI assistant can operate the
 engine (`get_campaign`, `search_youtube`, `find_prospects`, …) through the same Application
