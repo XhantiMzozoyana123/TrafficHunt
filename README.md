@@ -205,6 +205,51 @@ Or configure it in your client's settings (example for Claude Desktop's `claude_
 | `update_prospect_status` | Move a prospect through the pipeline (New → Contacted → Interested → Converted/Rejected). |
 | `get_campaign` | Get campaign configuration and global stats. |
 
+## Hangfire Job Pipeline
+
+Long-running work (video discovery, comment import, AI analysis) runs as **Hangfire background jobs** using the same MySQL database for persistence — jobs survive app restarts.
+
+### Job pipeline
+
+```
+Discover → Import Comments → Analyze (Ollama) → Detect Opportunities → Notify
+```
+
+| Job | Purpose |
+| --- | --- |
+| `YouTubeDiscoveryJob` | Searches videos per campaign keyword (YoutubeExplode) |
+| `CommentImportJob` | Collects comments via YouTube Data API |
+| `CommentAnalysisJob` | Ollama AI qualification |
+| `OpportunityDetectionJob` | Identifies traffic opportunities |
+| `ChannelMonitoringJob` | Recurring channel monitoring |
+| `NotificationJob` | User notifications |
+| `MaintenanceJob` | Cleanup and reports |
+
+### Queue separation
+
+```
+youtube queue  → 10 workers  (YouTube fetching, not the bottleneck)
+ai queue       →  2 workers  (Ollama — the bottleneck)
+notifications  →  5 workers
+maintenance    →  1 worker
+```
+
+This prevents 100 AI jobs from overwhelming Ollama while YouTube fetching runs at full speed.
+
+### Recurring jobs
+
+```csharp
+// Monitor a channel every 6 hours
+RecurringJob.AddOrUpdate<ChannelMonitoringJob>(
+    $"channel-{channelId}",
+    job => job.RunAsync(channelId, campaignId),
+    Cron.Hourly(6));
+```
+
+### MCP + Hangfire
+
+The MCP `promote` tool can either run discovery inline (small campaigns) or **enqueue a Hangfire job** and return a `jobId` immediately for large-scale work — the AI then polls `get_job_status`.
+
 ## API Surface (Milestone 1)
 
 | Method | Route | Purpose |
