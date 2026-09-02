@@ -8,6 +8,11 @@ namespace TrafficHunt.Application.Interfaces;
 public interface IYouTubeSearchService
 {
     Task<List<DiscoveredVideo>> SearchVideosAsync(string keyword, int maxResults = 10, CancellationToken ct = default);
+
+    /// <summary>
+    /// Search for videos from a specific channel. Used by channel monitoring.
+    /// </summary>
+    Task<List<DiscoveredVideo>> SearchChannelVideosAsync(string channelId, int maxResults = 10, CancellationToken ct = default);
 }
 
 /// <summary>

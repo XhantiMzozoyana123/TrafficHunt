@@ -24,4 +24,19 @@ public class YouTubeSearchService : IYouTubeSearchService
             Url = v.Url
         }).ToList();
     }
+
+    public async Task<List<DiscoveredVideo>> SearchChannelVideosAsync(string channelId, int maxResults = 10, CancellationToken ct = default)
+    {
+        // YoutubeExplode 6.x doesn't expose a direct channel videos endpoint,
+        // so we search for videos associated with the channel ID.
+        var results = await _youtube.Search.GetVideosAsync($"channel:{channelId}", ct).CollectAsync(maxResults);
+
+        return results.Select(v => new DiscoveredVideo
+        {
+            YouTubeVideoId = v.Id.Value,
+            Title = v.Title,
+            ChannelTitle = v.Author?.ChannelTitle ?? string.Empty,
+            Url = v.Url
+        }).ToList();
+    }
 }
