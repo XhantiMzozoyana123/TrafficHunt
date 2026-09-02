@@ -96,33 +96,51 @@ services the REST API uses.
 
 ### Backend
 
-1. **MySQL** — create a database (e.g. `traffichunt`), then set the connection string in
-   `TrafficHunt.Web/appsettings.json` or user secrets:
+1. **MySQL** — XAMPP ships MySQL on port 3306 (`root`, no password by default). The connection
+   string in `TrafficHunt.Web/appsettings.json` already matches that. Override locally with user
+   secrets to keep credentials out of the repo:
 
    ```powershell
    cd TrafficHunt.Web
    dotnet user-secrets init
-   dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Server=localhost;Port=3306;Database=traffichunt;User=root;Password=..."
-   dotnet ef migrations add InitialCreate
-   dotnet ef database update
+   dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Server=127.0.0.1;Port=3306;Database=traffichunt;Uid=root;Pwd=YOUR_PASSWORD;"
    ```
 
-2. **YouTube Data API key** — create an API key with YouTube Data API v3 enabled and set
-   `YouTube:ApiKey` in `appsettings.json`.
-
-3. **Ollama** — install from https://ollama.com and pull a model:
+2. **Code First** — the data model lives in `TrafficHunt.Domain` entities; migrations live in
+   `TrafficHunt.Infrastructure`. Apply from the repo root:
 
    ```powershell
-   ollama pull llama3.1
+   dotnet ef database update --project TrafficHunt.Infrastructure --startup-project TrafficHunt.Web
    ```
 
-   Model and base URL are configurable under `Ollama` in `appsettings.json`.
+   The committed `20260902165822_InitialCreate` migration already covers `Campaigns`,
+   `CampaignKeywords`, `Prospects`, `Videos`, `Comments`, and their indexes — one command to
+   create the schema. To add a new migration after a model change:
 
-4. **Run**:
+   ```powershell
+   dotnet ef migrations add <Name> --project TrafficHunt.Infrastructure --startup-project TrafficHunt.Web
+   dotnet ef database update --project TrafficHunt.Infrastructure --startup-project TrafficHunt.Web
+   ```
+
+3. **YouTube Data API key** — create one with the YouTube Data API v3 enabled, set
+   `YouTube:ApiKey` in `appsettings.json` (or user secrets).
+
+4. **Ollama** — the backend sends AI requests to an Ollama instance configured under `Ollama:`
+   in `appsettings.json` (a hosted instance is pre-configured):
+
+   ```json
+   "Ollama": {
+     "BaseUrl": "http://63.141.255.202:11434",
+     "Model": "llama3"
+   }
+   ```
+
+5. **Run**:
 
    ```powershell
    dotnet run --project TrafficHunt.Web
    ```
+
 
 ### Frontend
 

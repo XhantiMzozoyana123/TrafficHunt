@@ -12,12 +12,16 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
-        // ---- Database (MySQL via Pomelo) ----
+                // ---- Database (MySQL via Pomelo - Code First) ----
         var connectionString = configuration.GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
+        // Explicit MySQL 8.0 version avoids a live probe at design time.
+        var serverVersion = new MySqlServerVersion(new Version(8, 0, 39));
+
         services.AddDbContext<TrafficHuntDbContext>(options =>
-            options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
+            options.UseMySql(connectionString, serverVersion));
+
 
         // ---- Repositories ----
         services.AddScoped<ICampaignRepository, CampaignRepository>();
