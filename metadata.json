@@ -1,0 +1,6 @@
+{
+  "name": "Traffic Hunt",
+  "description": "Private AI-powered customer acquisition, YouTube prospect discovery, and outreach operator with ChatGPT/Claude conversational interface and MCP tools.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
