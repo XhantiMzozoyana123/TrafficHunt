@@ -12,8 +12,9 @@ namespace TrafficHunt.Infrastructure.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.Sql(
-                "ALTER TABLE `Comments` ADD UNIQUE INDEX `IX_Comments_VideoId_YouTubeCommentId` (`VideoId`, `YouTubeCommentId`)");
+            // NOTE: IX_Comments_VideoId_YouTubeCommentId is already created by
+            // InitialCreate — do NOT re-add it here (caused "Duplicate key name"
+            // crash on fresh MySQL 8 deployments).
 
             migrationBuilder.AlterColumn<string>(
                 name: "AuthorName",
@@ -174,10 +175,6 @@ namespace TrafficHunt.Infrastructure.Migrations
 
             migrationBuilder.DropTable(
                 name: "ReplyCampaigns");
-
-            migrationBuilder.DropIndex(
-                name: "IX_Comments_VideoId",
-                table: "Comments");
 
             migrationBuilder.AlterColumn<string>(
                 name: "AuthorName",
