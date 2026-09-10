@@ -20,10 +20,21 @@ RUN dotnet publish "TrafficHunt.Web/TrafficHunt.Web.csproj" \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 
+# wget is needed for the compose healthcheck (not present in the minimal runtime image).
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends wget \
+    && rm -rf /var/lib/apt/lists/*
+# Pre-create an empty appsettings.json owned by the app user so the
+# read-write mount works even if the host file is root-owned/missing.
+RUN touch /app/appsettings.json && chown $APP_UID /app/appsettings.json
+
 # ASP.NET Core listens on port 80 by default in the runtime image.
 EXPOSE 80
 
 # Non-root user recommended by Microsoft; safer in production.
+# NOTE: $APP_UID is defined by the base image — only usable after it is set,
+# so the non-root switch happens here at the end (after the root steps above).
 USER $APP_UID
 
 # The app reads config from appsettings.json + environment variables.
