@@ -8,6 +8,7 @@
   </PropertyGroup>
 
     <ItemGroup>
+    <PackageReference Include="Google.Apis.YouTube.v3" Version="1.76.0.4249" />
     <PackageReference Include="Hangfire.Core" Version="1.8.14" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.0" />

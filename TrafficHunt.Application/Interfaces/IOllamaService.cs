@@ -1,4 +1,5 @@
 using TrafficHunt.Application.Dtos;
+using TrafficHunt.Domain.Entities;
 
 namespace TrafficHunt.Application.Interfaces;
 
@@ -24,5 +25,16 @@ public interface IOllamaService
     /// skeleton (product, audience, problems, discovery keywords) as structured JSON.
     /// </summary>
     Task<CampaignDraft> GenerateCampaignAsync(string description, CancellationToken ct = default);
+
+    /// <summary>
+    /// Generate reply message templates for a reply campaign, grounded in real
+    /// prospect comments so responses address what prospects actually say.
+    /// </summary>
+    Task<List<string>> GenerateReplyTemplatesAsync(string campaignContext, List<string> sampleComments, CancellationToken ct = default);
+
+    /// <summary>
+    /// Generate an AI-powered analytics summary for a completed reply campaign.
+    /// </summary>
+    Task<string> GenerateAnalyticsSummaryAsync(ReplyCampaign campaign, List<ReplyRecord> records, CancellationToken ct = default);
 }
 

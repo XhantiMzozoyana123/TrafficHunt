@@ -1,0 +1,190 @@
+@model CampaignDetailViewModel
+@{
+    ViewData["Title"] = Model.Campaign.Name;
+    var c = Model.Campaign;
+}
+
+<div class="page-title">@c.Name</div>
+<p class="page-sub muted">@(string.IsNullOrEmpty(c.ProductName) ? "No product name" : c.ProductName)</p>
+
+<div class="btn-row" style="margin-bottom:18px">
+    <a class="btn btn-ghost" asp-action="Index">&larr; Back</a>
+    <a class="btn btn-ghost" asp-action="Edit" asp-route-id="@c.Id">Edit</a>
+    <form asp-action="Delete" method="post"
+          onsubmit="return confirm('Delete campaign @c.Name? This also removes its keywords, problems and prospects.');">
+        <input type="hidden" name="id" value="@c.Id" />
+        <button class="btn btn-danger" type="submit">Delete</button>
+    </form>
+    <span class="badge @c.Status">@c.Status</span>
+</div>
+
+<div class="grid cards" style="margin-bottom:18px">
+    <div class="card stat-card"><div class="stat-value tone-cyan">@Model.Stats.TotalProspects</div><div class="stat-label">Prospects</div></div>
+    <div class="card stat-card"><div class="stat-value tone-violet">@Model.Stats.HighIntent</div><div class="stat-label">High intent</div></div>
+    <div class="card stat-card"><div class="stat-value tone-amber">@Model.Stats.Contacted</div><div class="stat-label">Contacted</div></div>
+    <div class="card stat-card"><div class="stat-value tone-green">@Model.Stats.Converted</div><div class="stat-label">Converted</div></div>
+</div>
+
+<div class="grid cols-2">
+    <div class="card">
+        <h3 class="card-title" style="margin-bottom:8px">Configuration</h3>
+        <dl class="kv">
+            <dt>Product</dt><dd>@c.ProductName</dd>
+            <dt>Description</dt><dd>@c.ProductDescription</dd>
+            <dt>URL</dt><dd>@c.ProductUrl</dd>
+            <dt>Value prop</dt><dd>@c.ValueProposition</dd>
+            <dt>Target audience</dt><dd>@c.TargetAudience</dd>
+            <dt>Primary problem</dt><dd>@c.PrimaryProblem</dd>
+            <dt>Created</dt><dd>@c.CreatedAt.ToLocalTime().ToString("g")</dd>
+        </dl>
+
+        <h3 class="card-title" style="margin:12px 0 8px">Problems solved</h3>
+        @if (c.Problems.Count == 0)
+        {
+            <p class="small muted">None listed.</p>
+        }
+        else
+        {
+            <ul>
+                @foreach (var p in c.Problems)
+                {
+                    <li>@p.Text</li>
+                }
+            </ul>
+        }
+    </div>
+
+    <div class="card">
+        <h3 class="card-title" style="margin-bottom:8px">Discovery keywords</h3>
+        @if (c.Keywords.Count == 0)
+        {
+            <p class="small muted">No keywords yet — add some below, or run the AI planner.</p>
+        }
+        else
+        {
+            <table class="table">
+                <tbody>
+                    @foreach (var k in c.Keywords)
+                    {
+                        <tr>
+                            <td>@k.Keyword</td>
+                            <td class="num">
+                                <form asp-action="RemoveKeyword" method="post" style="display:inline">
+                                    <input type="hidden" name="keywordId" value="@k.Id" />
+                                    <input type="hidden" name="campaignId" value="@c.Id" />
+                                    <button class="btn btn-sm btn-ghost" type="submit">&times;</button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        <form asp-action="AddKeyword" method="post" class="btn-row" style="margin-top:12px">
+            <input type="hidden" name="campaignId" value="@c.Id" />
+            <input type="text" name="keyword" placeholder="Add a keyword…" style="flex:1" />
+            <button class="btn btn-sm" type="submit">Add</button>
+        </form>
+
+        <h3 class="card-title" style="margin:18px 0 8px">Run extraction</h3>
+        <form asp-action="RunDiscovery" method="post" class="btn-row">
+            <input type="hidden" name="id" value="@c.Id" />
+            <input type="number" name="videosPerKeyword" value="3" min="1" max="20" style="width:90px" />
+            <button class="btn btn-success" type="submit">Run Extraction (background)</button>
+        </form>
+        <p class="small muted" style="margin-top:6px">Enqueues a Hangfire job that scrapes YouTube videos for your keywords, pulls every comment via YoutubeExplode, and uses the LLM to qualify relevant ones into prospects (status New). Progress on the <a class="link" asp-controller="Jobs" asp-action="Index">Background Jobs</a> page.</p>
+    </div>
+</div>
+
+<div class="grid cols-2" style="margin-top:16px">
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Top prospects</h3>
+            <a class="btn btn-sm btn-ghost" asp-controller="Prospects" asp-action="Index" asp-route-campaignId="@c.Id">View all</a>
+        </div>
+        @if (Model.TopProspects.Count == 0)
+        {
+            <p class="small muted">Run discovery to find prospects for this campaign.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="table">
+                    <thead><tr><th>Author</th><th>Intent</th><th>Status</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var p in Model.TopProspects)
+                        {
+                            <tr>
+                                <td>
+                                    <a class="link" asp-controller="Prospects" asp-action="Details" asp-route-id="@p.Id">@p.AuthorName</a>
+                                    <div class="small muted" style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@p.CommentText</div>
+                                </td>
+                                <td>
+                                    <div class="score">
+                                        <div class="score-bar"><div class="score-fill @(p.IntentScore < 50 ? "warn" : "")" style="width:@p.IntentScore%"></div></div>
+                                        <span>@p.IntentScore</span>
+                                    </div>
+                                </td>
+                                <td><span class="badge @p.Status">@p.Status</span></td>
+                                <td><a class="btn btn-sm btn-ghost" asp-controller="Prospects" asp-action="Details" asp-route-id="@p.Id">Open</a></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Reply campaigns</h3>
+            <a class="btn btn-sm btn-ghost" asp-controller="ReplyCampaigns" asp-action="Create">Create</a>
+        </div>
+        @if (Model.ReplyCampaigns.Count == 0)
+        {
+            <p class="small muted">No reply campaigns for this campaign yet.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="table">
+                    <thead><tr><th>Name</th><th class="num">Sent</th><th>Status</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var rc in Model.ReplyCampaigns)
+                        {
+                            <tr>
+                                <td><a class="link" asp-controller="ReplyCampaigns" asp-action="Details" asp-route-id="@rc.Id">@rc.Name</a></td>
+                                <td class="num">@rc.RepliesSent</td>
+                                <td><span class="badge @rc.Status">@rc.Status</span></td>
+                                <td><a class="btn btn-sm btn-ghost" asp-controller="ReplyCampaigns" asp-action="Details" asp-route-id="@rc.Id">Open</a></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(c.QualificationRules) || !string.IsNullOrEmpty(c.OutreachInstructions) || !string.IsNullOrEmpty(c.ReplyInstructions))
+{
+    <div class="grid cols-3" style="margin-top:16px">
+        <div class="card">
+            <h3 class="card-title" style="margin-bottom:8px">Qualification rules</h3>
+            <p class="small">@(RenderOrDash(c.QualificationRules))</p>
+        </div>
+        <div class="card">
+            <h3 class="card-title" style="margin-bottom:8px">Outreach instructions</h3>
+            <p class="small">@(RenderOrDash(c.OutreachInstructions))</p>
+        </div>
+        <div class="card">
+            <h3 class="card-title" style="margin-bottom:8px">Reply instructions</h3>
+            <p class="small">@(RenderOrDash(c.ReplyInstructions))</p>
+        </div>
+    </div>
+}
+
+@functions {
+    private static string RenderOrDash(string? s) => string.IsNullOrWhiteSpace(s) ? "—" : s;
+}

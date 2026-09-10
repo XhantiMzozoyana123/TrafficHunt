@@ -1,0 +1,26 @@
+@model ReplyCampaignEditViewModel
+@{
+    ViewData["Title"] = "Edit Reply Campaign";
+}
+
+<div class="page-title">Edit Reply Campaign</div>
+<p class="page-sub">Rename the campaign or adjust the anti-spam delay range between sends. Reply records are not affected.</p>
+
+<form asp-action="Edit" method="post" asp-antiforgery="true" style="max-width:560px">
+    <input type="hidden" asp-for="Id" />
+    <div class="card" style="margin-bottom:18px">
+        <div asp-validation-summary="All" class="text-error" style="margin-bottom:10px"></div>
+        <dl class="kv">
+            <dt>Name</dt>
+            <dd><input asp-for="Name" style="width:100%" required /></dd>
+            <dt>Min delay (seconds)</dt>
+            <dd><input asp-for="MinDelaySeconds" type="number" min="0" style="width:100%" /></dd>
+            <dt>Max delay (seconds)</dt>
+            <dd><input asp-for="MaxDelaySeconds" type="number" min="0" style="width:100%" /></dd>
+            <dt>Status</dt>
+            <dd><span class="badge">@Model.Status</span> <span class="small muted">(changed via Start / Pause on the detail page)</span></dd>
+        </dl>
+    </div>
+    <button class="btn btn-success" type="submit">Save changes</button>
+    <a class="btn" href="/ReplyCampaigns/Details/@Model.Id">Cancel</a>
+</form>

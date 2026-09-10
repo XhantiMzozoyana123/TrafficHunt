@@ -1,0 +1,57 @@
+@model ReplyCampaignIndexViewModel
+@{
+    ViewData["Title"] = "Reply Campaigns";
+}
+
+<div class="page-title">Reply Campaigns</div>
+<p class="page-sub">@Model.ReplyCampaigns.Count reply campaigns · @Model.TotalRepliesSent total replies sent.</p>
+
+<div class="btn-row" style="margin-bottom:18px">
+    <a class="btn" asp-action="Create">+ New Reply Campaign</a>
+</div>
+
+@if (Model.ReplyCampaigns.Count == 0)
+{
+    <div class="empty">No reply campaigns yet. Create one from a campaign's prospects to start AI-assisted outreach.</div>
+}
+else
+{
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Campaign</th>
+                    <th class="num">Sent</th>
+                    <th class="num">Pending</th>
+                    <th class="num">Failed</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var rc in Model.ReplyCampaigns)
+                {
+                    <tr>
+                        <td><a class="link" asp-action="Details" asp-route-id="@rc.Id">@rc.Name</a></td>
+                        <td class="small muted">@(rc.Campaign?.Name ?? "—")</td>
+                        <td class="num">@rc.RepliesSent</td>
+                        <td class="num">@rc.RepliesPending</td>
+                        <td class="num">@rc.RepliesFailed</td>
+                        <td><span class="badge @rc.Status">@rc.Status</span></td>
+                        <td class="small muted">@rc.CreatedAt.ToLocalTime().ToString("g")</td>
+                        <td class="num">
+                            <a class="btn btn-sm btn-ghost" asp-action="Details" asp-route-id="@rc.Id">Open</a>
+                            <a class="btn btn-sm btn-ghost" asp-action="Edit" asp-route-id="@rc.Id">Edit</a>
+                            <form asp-action="Delete" method="post" asp-antiforgery="true" style="display:inline">
+                                <input type="hidden" name="id" value="@rc.Id" />
+                                <button class="btn btn-sm btn-ghost btn-red-text" type="submit" onclick="return confirm('Delete reply campaign \'@rc.Name\' and ALL its reply records? This cannot be undone.')">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

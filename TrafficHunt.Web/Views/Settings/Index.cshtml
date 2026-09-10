@@ -1,0 +1,71 @@
+@model SettingsViewModel
+@{
+    ViewData["Title"] = "Settings";
+}
+
+<div class="page-title">Settings</div>
+<p class="page-sub">API keys and service endpoints. Saved to <code>appsettings.json</code> — restart the app after changing the LLM or YouTube settings.</p>
+
+<form asp-action="Save" method="post" asp-antiforgery="true" style="max-width:760px">
+    <div class="card" style="margin-bottom:18px">
+        <h3 class="card-title" style="margin-bottom:10px">&#9881; LLM (Ollama)</h3>
+        <dl class="kv">
+            <dt>Base URL</dt>
+            <dd><input asp-for="OllamaBaseUrl" style="width:100%" /></dd>
+            <dt>Model</dt>
+            <dd><input asp-for="OllamaModel" style="width:100%" /></dd>
+        </dl>
+    </div>
+
+    <div class="card" style="margin-bottom:18px">
+        <h3 class="card-title" style="margin-bottom:10px">Database (MySQL)</h3>
+        <dl class="kv">
+            <dt>Connection string</dt>
+            <dd><input asp-for="ConnectionString" style="width:100%" /></dd>
+        </dl>
+    </div>
+
+    <div class="card" style="margin-bottom:18px">
+        <h3 class="card-title" style="margin-bottom:10px">YouTube Data API key</h3>
+        <p class="small muted" style="margin-bottom:8px">Not used by the current extraction pipeline (scraping needs no key) — kept for future Data-API features.</p>
+        <dl class="kv">
+            <dt>API key</dt>
+            <dd><input asp-for="YouTubeApiKey" type="password" style="width:100%" /></dd>
+        </dl>
+    </div>
+
+    <button class="btn btn-success" type="submit">Save settings</button>
+</form>
+
+<div class="card" style="max-width:760px;margin-bottom:18px">
+    <h3 class="card-title" style="margin-bottom:10px">Google account (reply publishing)</h3>
+    <p class="small muted" style="margin-bottom:8px">
+        Connect the Google account that owns the channel replies are posted from.
+        Uses the official YouTube Data API v3 with OAuth2 (scope youtube.force-ssl).
+    </p>
+    <dl class="kv">
+        <dt>Status</dt>
+        <dd>
+            @if (Model.OAuthConnected)
+            {
+                <span class="badge Approved">Connected</span>
+            }
+            else
+            {
+                <span class="badge Failed">Not connected</span>
+            }
+        </dd>
+    </dl>
+
+    @if (Model.OAuthConnected)
+    {
+        <form asp-controller="OAuth" asp-action="Disconnect" method="post" asp-antiforgery="true" style="display:inline">
+            <button class="btn btn-red" type="submit" onclick="return confirm('Disconnect the Google account? Replies will fail until you reconnect.')">Disconnect Google account</button>
+        </form>
+        <a class="btn btn-amber" href="/oauth/login">Reconnect (re-consent)</a>
+    }
+    else
+    {
+        <a class="btn btn-success" href="/oauth/login">Connect Google account</a>
+    }
+</div>

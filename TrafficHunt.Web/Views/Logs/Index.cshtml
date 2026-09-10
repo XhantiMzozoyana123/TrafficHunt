@@ -1,0 +1,80 @@
+@model LogsIndexViewModel
+@{
+    ViewData["Title"] = "Live Logs";
+    var lastId = Model.Entries.LastOrDefault()?.Id ?? 0;
+    var count = Model.Entries.Count;
+}
+
+<div class="page-title">Live Logs</div>
+<p class="page-sub">Real-time stream of every HTTP request and every background-job log (incl. Reply Campaign Hangfire jobs). Auto-refreshes every 2s. Newest entries appear at the bottom.</p>
+
+<div class="toolbar" style="margin-bottom:12px; display:flex; align-items:center; gap:16px; flex-wrap:wrap">
+    <div style="display:flex; align-items:center; gap:10px;">
+        <span class="small muted">Filter:</span>
+        <label><input type="radio" name="category" value="all" checked> All</label>
+        <label><input type="radio" name="category" value="HTTP Request"> Requests</label>
+        <label><input type="radio" name="category" value="Hangfire"> Hangfire</label>
+        <label><input type="radio" name="category" value="Reply Campaign"> Jobs</label>
+    </div>
+    <div style="display:flex; align-items:center; gap:6px;">
+        <label class="small muted" style="margin:0">Campaign #</label>
+        <input id="filterCampaign" type="number" min="0" placeholder="e.g. 3" style="width:90px" />
+    </div>
+    <div class="spacer"></div>
+    <form asp-action="Clear" method="post" asp-antiforgery="true" style="display:inline">
+        <button id="clearLogs" type="submit" class="btn btn-ghost btn-sm">Clear</button>
+    </form>
+    <button id="loadRecent" type="button" class="btn btn-ghost btn-sm">Load recent</button>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Console</h3>
+        <span id="logCount" class="small muted">@((count == 0 ? "no entries yet" : count + " entries loaded · live"))</span>
+    </div>
+    <div class="log-console-wrap">
+        <div id="logConsole" class="log-console" style="min-height:120px">
+            @if (count == 0)
+            {
+                <p class="small muted">No entries yet. Trigger a request or start a reply campaign to see live logs here.</p>
+            }
+            else
+            {
+                foreach (var e in Model.Entries)
+                {
+                    <div class="log-row @e.LevelClass">
+                        <span class="log-time muted">@(e.Timestamp.ToLocalTime().ToString("HH:mm:ss"))</span>
+                        <span class="log-lvl @e.LevelClass">@e.LevelName</span>
+                        <span class="log-cat muted">@{
+                            var cat = e.Category == "HTTP Request" ? "HTTP Request" : e.Category.Split('.').Last();
+                        }
+                        @cat</span>
+                        @if (e.Category == "HTTP Request")
+                        {
+                            <span class="log-msg">
+                                <span class="muted">@e.RequestMethod</span>
+                                <span class="link-dim">@e.RequestPath</span>
+                                <span class="@e.LevelClass">@(e.StatusCode.HasValue ? ("HTTP " + e.StatusCode) : "OK")</span>
+                                @if (e.DurationMs.HasValue) { <span class="muted">· @e.DurationMs ms</span> }
+                            </span>
+                        }
+                        else
+                        {
+                            <span class="log-msg" title="@e.Message">@e.Message</span>
+                            @if (e.ReplyCampaignId.HasValue) { <span class="muted">campaign @e.ReplyCampaignId</span> }
+                            @if (!string.IsNullOrEmpty(e.HangfireJobId)) { <span class="muted">job @e.HangfireJobId</span> }
+                        }
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script src="~/js/logs.js" asp-append-version="true"></script>
+    <script>
+        window.logSinceId = @lastId;
+        window.logTotal = @count;
+    </script>
+}

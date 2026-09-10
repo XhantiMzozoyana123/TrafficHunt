@@ -1,0 +1,70 @@
+@model Prospect
+@{
+    ViewData["Title"] = Model.AuthorName;
+    var p = Model;
+}
+
+<div class="page-title">@p.AuthorName</div>
+<p class="page-sub muted">Prospect from @(p.Campaign?.Name ?? $"campaign #{p.CampaignId}")</p>
+
+<div class="btn-row" style="margin-bottom:18px">
+    <a class="btn btn-ghost" asp-action="Index" asp-route-campaignId="@p.CampaignId">&larr; Back</a>
+    <span class="badge @p.Status">@p.Status</span>
+    <span class="score" style="width:auto;min-width:140px">
+        <span class="muted small">Intent</span>
+        <div class="score-bar"><div class="score-fill @(p.IntentScore < 50 ? "warn" : "")" style="width:@p.IntentScore%"></div></div>
+        <strong>@p.IntentScore</strong>
+    </span>
+</div>
+
+<div class="grid cols-2">
+    <div class="card">
+        <h3 class="card-title" style="margin-bottom:8px">Profile</h3>
+        <dl class="kv">
+            <dt>YouTube channel</dt>
+            <dd>
+                @if (!string.IsNullOrEmpty(p.YouTubeProfileUrl))
+                {
+                    <a class="link" href="@p.YouTubeProfileUrl" target="_blank" rel="noopener">@p.YouTubeChannelId</a>
+                }
+                else
+                {
+                    <span class="muted">—</span>
+                }
+            </dd>
+            <dt>Video</dt><dd>@p.VideoTitle</dd>
+            <dt>Comment</dt><dd class="small">@p.CommentText</dd>
+            <dt>Pain point</dt><dd>@(string.IsNullOrEmpty(p.PainPoint) ? "—" : p.PainPoint)</dd>
+            <dt>AI reason</dt><dd class="small">@(string.IsNullOrEmpty(p.AIReason) ? "—" : p.AIReason)</dd>
+            <dt>Target audience</dt><dd>@(p.IsTargetAudience ? "Yes" : "No")</dd>
+            <dt>Relevant problem</dt><dd>@(p.HasRelevantProblem ? "Yes" : "No")</dd>
+            <dt>Discovered</dt><dd>@p.CreatedAt.ToLocalTime().ToString("g")</dd>
+            <dt>Last contacted</dt><dd>@(p.LastContactedAt?.ToLocalTime().ToString("g") ?? "—")</dd>
+        </dl>
+    </div>
+
+    <div class="card">
+        <h3 class="card-title" style="margin-bottom:8px">Update status</h3>
+        <form asp-action="UpdateStatus" method="post" asp-antiforgery="true" class="btn-row">
+            <input type="hidden" name="id" value="@p.Id" />
+            <input type="hidden" name="campaignId" value="@p.CampaignId" />
+            <input type="hidden" name="list" value="details" />
+            <select name="status" style="min-width:160px">
+                @foreach (var s in new[] { "New", "Qualified", "Contacted", "Interested", "Converted", "Rejected" })
+                {
+                    <option value="@s" selected="@(p.Status == s)">@s</option>
+                }
+            </select>
+            <button class="btn" type="submit">Update</button>
+        </form>
+        <p class="small muted" style="margin-top:8px">Move the prospect through your pipeline: New → Qualified → Contacted → Interested → Converted (or Rejected).</p>
+
+        <h3 class="card-title" style="margin:18px 0 8px">Danger zone</h3>
+        <form asp-action="Delete" method="post" asp-antiforgery="true"
+              onsubmit="return confirm('Delete this prospect permanently?');">
+            <input type="hidden" name="id" value="@p.Id" />
+            <input type="hidden" name="campaignId" value="@p.CampaignId" />
+            <button class="btn btn-danger" type="submit">Delete prospect</button>
+        </form>
+    </div>
+</div>

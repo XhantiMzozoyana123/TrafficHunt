@@ -33,8 +33,9 @@ public class CommentAnalysisJob
     /// <summary>
     /// Analyze a comment against the campaign context and store as a prospect if qualified.
     /// </summary>
-    public async Task RunAsync(int campaignId, string youTubeVideoId, string videoTitle, CollectedComment comment)
+    public async Task RunAsync(int campaignId, string youTubeVideoId, string videoTitle, CollectedComment comment, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         // Skip if already exists (double-check after dequeue)
         if (await _prospects.ExistsAsync(campaignId, comment.YouTubeCommentId))
             return;

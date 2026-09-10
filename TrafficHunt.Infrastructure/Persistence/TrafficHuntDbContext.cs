@@ -16,6 +16,10 @@ public class TrafficHuntDbContext : DbContext
     public DbSet<Video> Videos => Set<Video>();
     public DbSet<Comment> Comments => Set<Comment>();
 
+    public DbSet<ReplyCampaign> ReplyCampaigns => Set<ReplyCampaign>();
+    public DbSet<ReplyTemplate> ReplyTemplates => Set<ReplyTemplate>();
+    public DbSet<ReplyRecord> ReplyRecords => Set<ReplyRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Campaign>(e =>
@@ -70,11 +74,48 @@ public class TrafficHuntDbContext : DbContext
         modelBuilder.Entity<Comment>(e =>
         {
             e.HasKey(c => c.Id);
+            e.Property(c => c.YouTubeCommentId).HasMaxLength(255).IsRequired();
+            e.Property(c => c.AuthorName).HasMaxLength(200);
+            e.Property(c => c.AuthorChannelId).HasMaxLength(100);
+            e.HasIndex(c => c.VideoId);
             e.HasIndex(c => new { c.VideoId, c.YouTubeCommentId }).IsUnique();
             e.HasOne(c => c.Video)
                 .WithMany(v => v.Comments)
                 .HasForeignKey(c => c.VideoId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ReplyCampaign>(e =>
+        {
+            e.HasKey(c => c.Id);
+            e.Property(c => c.Name).HasMaxLength(200).IsRequired();
+            e.Property(c => c.Status).HasConversion<string>().HasMaxLength(20);
+            e.HasOne(c => c.Campaign)
+                .WithMany()
+                .HasForeignKey(c => c.CampaignId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(c => c.Templates)
+                .WithOne(t => t.ReplyCampaign)
+                .HasForeignKey(t => t.ReplyCampaignId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(c => c.ReplyRecords)
+                .WithOne(r => r.ReplyCampaign)
+                .HasForeignKey(r => r.ReplyCampaignId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ReplyTemplate>(e =>
+        {
+            e.HasKey(t => t.Id);
+            e.Property(t => t.Name).HasMaxLength(200).IsRequired();
+            e.Property(t => t.Body).IsRequired();
+        });
+
+        modelBuilder.Entity<ReplyRecord>(e =>
+        {
+            e.HasKey(r => r.Id);
+            e.Property(r => r.Status).HasConversion<string>().HasMaxLength(20);
+            e.HasIndex(r => new { r.ReplyCampaignId, r.Status });
         });
     }
 }

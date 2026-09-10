@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "TrafficHunt Cookie Helper",
+  "version": "1.0.0",
+  "description": "Copies your logged-in YouTube session cookie string so TrafficHunt can publish replies as your account.",
+  "permissions": ["cookies", "clipboardWrite"],
+  "host_permissions": [
+    "*://*.youtube.com/*",
+    "http://localhost:52956/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "TrafficHunt Cookie Helper"
+  }
+}

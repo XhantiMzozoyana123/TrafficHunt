@@ -6,7 +6,7 @@ using TrafficHunt.Domain.Entities;
 namespace TrafficHunt.Application.Services;
 
 /// <summary>
-/// The discovery orchestrator. Neither the frontend nor the AI (MCP) needs to
+/// The discovery orchestrator. Callers (the MVC UI or jobs) do not need to
 /// understand how discovery works - they simply say "find prospects".
 /// </summary>
 public class DiscoveryService : IDiscoveryService

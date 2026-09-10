@@ -1,0 +1,108 @@
+@model ProspectIndexViewModel
+@{
+    ViewData["Title"] = "Prospects";
+}
+
+<div class="page-title">Prospects</div>
+<p class="page-sub">@(Model.HasCampaign ? $"Prospects for \"{Model.CampaignName}\"" : "Select a campaign to see its prospects.")</p>
+
+<form method="get" asp-action="Index" class="filters">
+    <div class="form-field">
+        <label>Campaign</label>
+        <select name="campaignId">
+            <option value="">— All campaigns —</option>
+            @foreach (var cam in Model.Campaigns)
+            {
+                <option value="@cam.Id" selected="@(Model.CampaignId == cam.Id)">@cam.Name</option>
+            }
+        </select>
+    </div>
+    <div class="form-field">
+        <label>Status</label>
+        <select name="status">
+            <option value="">Any</option>
+            @foreach (var s in new[] { "New", "Qualified", "Contacted", "Interested", "Converted", "Rejected" })
+            {
+                <option value="@s" selected="@(Model.Status == s)">@s</option>
+            }
+        </select>
+    </div>
+    <div class="form-field">
+        <label>Min intent score</label>
+        <select name="minIntentScore">
+            <option value="">Any</option>
+            @foreach (var v in new[] { 50, 60, 70, 80, 90 })
+            {
+                <option value="@v" selected="@(Model.MinIntentScore == v)">@v</option>
+            }
+        </select>
+    </div>
+    <button class="btn" type="submit">Apply</button>
+    <a class="btn btn-ghost" asp-action="Index">Reset</a>
+</form>
+
+@if (!Model.HasCampaign)
+{
+    <div class="empty">@(Model.Campaigns.Count == 0 ? "No campaigns exist yet. Create one first." : "Choose a campaign above to load its prospects.")</div>
+}
+else if (Model.Prospects.Count == 0)
+{
+    <div class="empty">No prospects match the filters for this campaign.</div>
+}
+else
+{
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Author</th>
+                    <th>Comment</th>
+                    <th>Intent</th>
+                    <th>Pain point</th>
+                    <th>Status</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var p in Model.Prospects.OrderByDescending(x => x.IntentScore))
+                {
+                    <tr>
+                        <td>
+                            <a class="link" asp-action="Details" asp-route-id="@p.Id">@p.AuthorName</a>
+                            <div class="small muted">
+                                @if (!string.IsNullOrEmpty(p.YouTubeProfileUrl))
+                                {
+                                    <a href="@p.YouTubeProfileUrl" target="_blank" rel="noopener">YouTube profile</a>
+                                }
+                            </div>
+                        </td>
+                        <td class="small muted" style="max-width:340px">@p.CommentText</td>
+                        <td>
+                            <div class="score">
+                                <div class="score-bar"><div class="score-fill @(p.IntentScore < 50 ? "warn" : "")" style="width:@p.IntentScore%"></div></div>
+                                <span>@p.IntentScore</span>
+                            </div>
+                        </td>
+                        <td class="small">@(string.IsNullOrEmpty(p.PainPoint) ? "—" : p.PainPoint)</td>
+                        <td><span class="badge @p.Status">@p.Status</span></td>
+                        <td class="num">
+                            <div class="btn-row">
+                                <form asp-action="UpdateStatus" method="post" asp-antiforgery="true" class="btn-row">
+                                    <input type="hidden" name="id" value="@p.Id" />
+                                    <input type="hidden" name="campaignId" value="@Model.CampaignId" />
+                                    <select name="status">
+                                        @foreach (var s in new[] { "New", "Qualified", "Contacted", "Interested", "Converted", "Rejected" })
+                                        {
+                                            <option value="@s" selected="@(p.Status == s)">@s</option>
+                                        }
+                                    </select>
+                                    <button class="btn btn-sm" type="submit">Set</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

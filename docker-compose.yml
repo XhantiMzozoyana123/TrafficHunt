@@ -1,0 +1,66 @@
+version: "3.9"
+
+# TrafficHunt — container layout.
+#
+#   - The app container talks to MySQL. Two options:
+#       (A) run MySQL as a container here (uncomment mysql service + DB_HOST=db),
+#       (B) point at your existing/host MySQL (DB_HOST=127.0.0.1 and don't ship mysql).
+#   - appsettings.json is mounted as a volume SO THE APP CAN PERSIST OAuth tokens
+#     back to it at run time (the app rewrites it). Supply the other secrets via env.
+#
+# Usage:
+#   cp .env.example .env   # then edit .env with your real values
+#   docker compose up -d
+
+services:
+  web:
+    build: .
+    image: traffichunt:latest
+    container_name: traffichunt
+    ports:
+      - "${PublishPort:-8080}:80"
+    env_file:
+      - .env
+    environment:
+      # Overrides with sensible container defaults (still overridable by .env).
+      ASPNETCORE_URLS: "http://+:80"
+      AutoMigrate: "true"
+      DisableHttpsRedirect: "true"
+      # Default connection string; host comes from DB_HOST. Override in .env if your
+      # server runs MySQL elsewhere (options A vs B above).
+      ConnectionStrings__DefaultConnection: "Server=${DB_HOST:-db};Port=3306;Database=${DB_NAME:-traffichunt};Uid=${DB_USER:-traffichunt};Pwd=${DB_PASSWORD:-traffichunt_secret};"
+    volumes:
+      # Mount the config file so the app can PERSIST Google OAuth tokens back into
+      # it at run time (the app rewrites appsettings.json on token exchange/refresh).
+      # MUST be read-write (no :ro) or OAuth refresh will fail. Create
+      # ./config/appsettings.json on the host first (see config/README.md).
+      - ./config/appsettings.json:/app/appsettings.json
+    restart: unless-stopped
+    depends_on:
+      - db
+    healthcheck:
+      # wget ships with the aspnet runtime image (curl does not).
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:80/ || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # Optional: MySQL as a container. Comment this out if you use an existing/host DB
+  # (option B), and point DB_HOST at it instead.
+  db:
+    image: mysql:8.0
+    container_name: traffichunt-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-traffichunt_root}
+      MYSQL_DATABASE: ${DB_NAME:-traffichunt}
+      MYSQL_USER: ${DB_USER:-traffichunt}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-traffichunt_secret}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    restart: unless-stopped
+
+volumes:
+  mysql_data:

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; width: 320px; padding: 12px; background: #0e1116; color: #e6e8eb; }
+    h1 { font-size: 14px; margin: 0 0 10px; color: #4cc9f0; }
+    p { font-size: 11px; color: #9aa3ad; margin: 0 0 10px; line-height: 1.4; }
+    button {
+      width: 100%; padding: 9px 10px; margin-bottom: 8px; border: 1px solid #2a313a;
+      border-radius: 6px; background: #161b22; color: #e6e8eb; font-size: 12px; cursor: pointer;
+    }
+    button.primary { background: #4cc9f0; border-color: #4cc9f0; color: #06131a; font-weight: 600; }
+    button:hover { filter: brightness(1.15); }
+    #status { font-size: 11px; min-height: 16px; margin-top: 4px; }
+    #status.ok { color: #6ee7a0; }
+    #status.err { color: #ff6b6b; }
+    code { background: #161b22; padding: 1px 4px; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <h1>YouTube session cookie</h1>
+  <p>
+    Log in to YouTube in this browser first. This builds the full
+    <code>Cookie</code> header for <code>youtube.com</code> (must include
+    <code>SID</code> and <code>SAPISID</code>) so TrafficHunt can reply as your account.
+  </p>
+  <button id="copy" class="primary">Copy full cookie string</button>
+  <button id="send">Send to TrafficHunt (localhost:52956)</button>
+  <div id="status"></div>
+  <script src="popup.js"></script>
+</body>
+</html>

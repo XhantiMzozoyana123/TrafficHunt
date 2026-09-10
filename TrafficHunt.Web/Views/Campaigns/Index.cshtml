@@ -1,0 +1,60 @@
+@model CampaignIndexViewModel
+@{
+    ViewData["Title"] = "Campaigns";
+}
+
+<div class="page-title">Campaigns</div>
+<p class="page-sub">@Model.Campaigns.Count campaigns · @Model.TotalProspects total prospects across all campaigns.</p>
+
+<div class="btn-row" style="margin-bottom:18px">
+    <a class="btn" asp-action="Create">+ New Campaign</a>
+    <a class="btn btn-ghost" asp-action="Plan">AI Plan from Description</a>
+</div>
+
+@if (Model.Campaigns.Count == 0)
+{
+    <div class="empty">No campaigns yet. Create one manually or use the AI planner.</div>
+}
+else
+{
+    <div class="table-wrap">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Campaign</th>
+                    <th class="num">Keywords</th>
+                    <th class="num">Prospects</th>
+                    <th class="num">High intent</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in Model.Campaigns)
+                {
+                    <tr>
+                        <td>
+                            <a class="link" asp-action="Details" asp-route-id="@c.Id">@c.Name</a>
+                            <div class="small muted">@c.ProductName</div>
+                        </td>
+                        <td class="num">@c.KeywordCount</td>
+                        <td class="num">@c.ProspectCount</td>
+                        <td class="num">@c.HighIntent</td>
+                        <td><span class="badge @c.Status">@c.Status</span></td>
+                        <td class="small muted">@c.CreatedAt.ToLocalTime().ToString("g")</td>
+                        <td class="num">
+                            <a class="btn btn-sm btn-ghost" asp-action="Details" asp-route-id="@c.Id">Open</a>
+                            <a class="btn btn-sm btn-ghost" asp-action="Edit" asp-route-id="@c.Id">Edit</a>
+                            <form asp-action="Delete" method="post" style="display:inline"
+                                  onsubmit="return confirm('Delete campaign @c.Name? This also removes its keywords, problems and prospects.');">
+                                <input type="hidden" name="id" value="@c.Id" />
+                                <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

@@ -1,0 +1,698 @@
+using System;
+using System.IO;
+using System.Net.Http;
+using System.Net.Sockets;
+using System.Text;
+using TrafficHunt.Application.Dtos;
+using TrafficHunt.Application.Interfaces;
+using TrafficHunt.Domain.Entities;
+
+namespace TrafficHunt.Application.Services;
+
+public class ReplyCampaignService : IReplyCampaignService
+{
+    private readonly IReplyCampaignRepository _repository;
+    private readonly ICampaignRepository _campaignRepository;
+    private readonly IProspectService _prospects;
+    private readonly IOllamaService _ollama;
+    private readonly IYouTubeReplySender _replySender;
+    private static readonly Random _random = new();
+
+    public ReplyCampaignService(
+        IReplyCampaignRepository repository,
+        ICampaignRepository campaignRepository,
+        IProspectService prospects,
+        IOllamaService ollama,
+        IYouTubeReplySender replySender)
+    {
+        _repository = repository;
+        _campaignRepository = campaignRepository;
+        _prospects = prospects;
+        _ollama = ollama;
+        _replySender = replySender;
+    }
+
+    public async Task<List<ReplyCampaign>> GetAllAsync(CancellationToken ct = default) =>
+        await _repository.GetAllAsync(ct);
+
+    public async Task<ReplyCampaign> CreateAsync(CreateReplyCampaignRequest request, CancellationToken ct = default)
+    {
+        var campaign = new ReplyCampaign
+        {
+            CampaignId = request.CampaignId,
+            Name = request.Name,
+            Status = ReplyCampaignStatus.Draft,
+            MinDelaySeconds = request.MinDelaySeconds,
+            MaxDelaySeconds = request.MaxDelaySeconds
+        };
+
+        // Generate reply templates using Ollama if none provided
+        var templates = request.TemplateBodies;
+        if (templates == null || !templates.Any())
+        {
+            templates = await GenerateTemplatesAsync(request.CampaignId, ct);
+        }
+
+        for (int i = 0; i < templates.Count; i++)
+        {
+            campaign.Templates.Add(new ReplyTemplate
+            {
+                Name = $"Template {i + 1}",
+                Body = templates[i],
+                Order = i
+            });
+        }
+
+        // Find matching prospects and create reply records
+        var prospects = await _prospects.GetByCampaignAsync(
+            request.CampaignId,
+            minIntentScore: request.MinIntentScore ?? 80,
+            ct: ct);
+
+        foreach (var prospect in prospects)
+        {
+            campaign.ReplyRecords.Add(new ReplyRecord
+            {
+                ProspectId = prospect.Id,
+                Status = ReplyStatus.Pending
+            });
+        }
+
+        campaign.RepliesPending = campaign.ReplyRecords.Count;
+
+        await _repository.AddAsync(campaign, ct);
+        return campaign;
+    }
+
+    public async Task<ReplyCampaign?> GetByIdAsync(int id, CancellationToken ct = default) =>
+        await _repository.GetByIdAsync(id, ct);
+
+    public async Task<List<ReplyCampaign>> GetByCampaignAsync(int campaignId, CancellationToken ct = default) =>
+        await _repository.GetByCampaignAsync(campaignId, ct);
+
+    public async Task StartAsync(int replyCampaignId, CancellationToken ct = default)
+    {
+        var campaign = await _repository.GetByIdAsync(replyCampaignId, ct);
+        if (campaign == null) throw new ArgumentException("Reply campaign not found");
+
+        // Just flip to Running — the AI drafting/approval of each pending reply now
+        // happens in the background send loop (RunAllAsync) so this request returns
+        // immediately and the UI never sits on "loading". Records start as Pending;
+        // the background run drafts-and-sends them one at a time.
+        campaign.Status = ReplyCampaignStatus.Running;
+        campaign.StartedAt = DateTime.UtcNow;
+        await _repository.UpdateAsync(campaign, ct);
+    }
+
+    public async Task PauseAsync(int replyCampaignId, CancellationToken ct = default)
+    {
+        var campaign = await _repository.GetByIdAsync(replyCampaignId, ct);
+        if (campaign == null) throw new ArgumentException("Reply campaign not found");
+
+        campaign.Status = ReplyCampaignStatus.Paused;
+        await _repository.UpdateAsync(campaign, ct);
+    }
+
+    /// <summary>
+    /// Resumes a paused campaign without re-approving already-drafted replies.
+    /// Unlike StartAsync, this skips the AI drafting step for already-approved
+    /// records, so it returns immediately and the Hangfire job is enqueued right away.
+    /// </summary>
+    public async Task ResumeAsync(int replyCampaignId, CancellationToken ct = default)
+    {
+        var campaign = await _repository.GetByIdAsync(replyCampaignId, ct);
+        if (campaign == null) throw new ArgumentException("Reply campaign not found");
+
+        // Just flip back to Running — drafting/sending is handled by the background
+        // send loop (RunAllAsync), so this returns immediately.
+        campaign.Status = ReplyCampaignStatus.Running;
+        await _repository.UpdateAsync(campaign, ct);
+    }
+
+    /// <summary>
+    /// Sends exactly one approved reply for the campaign and updates its stats,
+    /// directly (no background job). Returns the sent record, or null when the
+    /// campaign is not running or there is nothing approved to send.
+    /// </summary>
+    public async Task<ReplyRecord?> SendNextReplyAsync(int replyCampaignId, CancellationToken ct = default)
+    {
+        var campaign = await _repository.GetByIdAsync(replyCampaignId, ct);
+        if (campaign == null || campaign.Status != ReplyCampaignStatus.Running) return null;
+
+        // Only human-approved replies are ever published.
+        var record = campaign.ReplyRecords
+            .Where(r => r.Status == ReplyStatus.Approved)
+            .OrderBy(r => r.Id)
+            .FirstOrDefault();
+        if (record == null) return null;
+
+        var template = record.TemplateId.HasValue
+            ? campaign.Templates.FirstOrDefault(t => t.Id == record.TemplateId.Value)
+            : null;
+        var message = record.MessageSent ?? string.Empty;
+
+        try
+        {
+            var prospect = record.Prospect
+                ?? throw new InvalidOperationException("Reply record has no prospect.");
+            if (string.IsNullOrEmpty(prospect.CommentId))
+                throw new InvalidOperationException("Prospect has no YouTube comment id.");
+            if (string.IsNullOrEmpty(prospect.VideoId))
+                throw new InvalidOperationException("Prospect has no YouTube video id.");
+
+            var replyId = await _replySender.SendReplyAsync(prospect.VideoId, prospect.CommentId, message, ct);
+
+            record.Status = ReplyStatus.Sent;
+            record.SentAt = DateTime.UtcNow;
+            record.ErrorMessage = null;
+            if (template != null) template.TimesUsed++;
+
+            campaign.RepliesSent++;
+            campaign.RepliesPending--;
+        }
+        catch (Exception ex)
+        {
+            record.Status = ReplyStatus.Failed;
+            record.ErrorMessage = ex.Message;
+            campaign.RepliesFailed++;
+            campaign.RepliesPending--;
+        }
+
+        await _repository.UpdateAsync(campaign, ct);
+        return record;
+    }
+
+    /// <summary>
+    /// Runs the campaign directly (no Hangfire job): while the campaign is Running,
+    /// drafts + sends the next reply, then paces with the configured anti-spam delay.
+    /// When nothing approved exists but pending replies remain, it drafts the next one
+    /// just-in-time (so AI drafting and sending interleave and progress is visible).
+    /// Marks the campaign Completed when there is literally nothing left. Returns when
+    /// the campaign pauses, runs out of work, or finishes.
+    /// </summary>
+    public async Task RunAllAsync(int replyCampaignId, CancellationToken ct = default)
+    {
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var campaign = await _repository.GetByIdAsync(replyCampaignId, ct);
+            if (campaign == null || campaign.Status != ReplyCampaignStatus.Running) return;
+
+            var pending = campaign.ReplyRecords
+                .Where(r => r.Status == ReplyStatus.Pending)
+                .OrderBy(r => r.Id)
+                .ToList();
+            var approved = campaign.ReplyRecords
+                .Where(r => r.Status == ReplyStatus.Approved)
+                .OrderBy(r => r.Id)
+                .ToList();
+
+            // Nothing approved and nothing awaiting — campaign is done.
+            if (approved.Count == 0 && pending.Count == 0)
+            {
+                campaign.Status = ReplyCampaignStatus.Completed;
+                campaign.CompletedAt = DateTime.UtcNow;
+                await _repository.UpdateAsync(campaign, ct);
+                return;
+            }
+
+            // Send the next approved reply when one is available.
+            if (approved.Count > 0)
+            {
+                var sent = await SendNextReplyAsync(replyCampaignId, ct);
+                if (sent == null) return; // campaign no longer running
+
+                var minDelay = Math.Min(campaign.MinDelaySeconds, campaign.MaxDelaySeconds);
+                var maxDelay = Math.Max(campaign.MinDelaySeconds, campaign.MaxDelaySeconds);
+                var delaySeconds = _random.Next(minDelay, maxDelay + 1);
+                if (delaySeconds > 0)
+                    await Task.Delay(TimeSpan.FromSeconds(delaySeconds), ct);
+
+                continue;
+            }
+
+            // No approved replies but pending ones exist — draft + approve the next
+            // one just-in-time, then loop to send it.
+            await DraftReplyAsync(campaign, pending[0], ct);
+            await _repository.UpdateAsync(campaign, ct);
+        }
+    }
+    public async Task<ReplyCampaignStats> GetStatsAsync(int replyCampaignId, CancellationToken ct = default)
+    {
+        var campaign = await _repository.GetByIdAsync(replyCampaignId, ct);
+        if (campaign == null) throw new ArgumentException("Reply campaign not found");
+
+        var total = campaign.ReplyRecords.Count;
+        var sent = campaign.RepliesSent;
+        var failed = campaign.RepliesFailed;
+
+        return new ReplyCampaignStats
+        {
+            TotalProspects = total,
+            RepliesSent = sent,
+            RepliesFailed = failed,
+            RepliesPending = campaign.RepliesPending,
+            SuccessRate = total > 0 ? (double)sent / total * 100 : 0
+        };
+    }
+
+    public async Task<CampaignAnalytics> GetAnalyticsAsync(int replyCampaignId, CancellationToken ct = default)
+    {
+        var campaign = await _repository.GetByIdAsync(replyCampaignId, ct);
+        if (campaign == null) throw new ArgumentException("Reply campaign not found");
+
+        var records = campaign.ReplyRecords.Where(r => r.Status == ReplyStatus.Sent).ToList();
+        var templateStats = campaign.Templates.ToDictionary(
+            t => t.Name,
+            t => records.Count(r => r.TemplateId == t.Id));
+
+        var hourlyActivity = records
+            .GroupBy(r => r.SentAt?.Hour ?? 0)
+            .Select(g => new HourlyActivity { Hour = g.Key, RepliesSent = g.Count() })
+            .OrderBy(h => h.Hour)
+            .ToList();
+
+        // Generate AI-powered insights
+        var summary = await _ollama.GenerateAnalyticsSummaryAsync(campaign, records, ct);
+
+        return new CampaignAnalytics
+        {
+            Summary = summary,
+            Insights = GenerateInsights(campaign, records),
+            Recommendations = GenerateRecommendations(campaign, records),
+            TemplatePerformance = templateStats,
+            ActivityByHour = hourlyActivity
+        };
+    }
+
+    public async Task<ReplyRecord?> GetNextPendingAsync(int replyCampaignId, CancellationToken ct = default)
+    {
+        var campaign = await _repository.GetByIdAsync(replyCampaignId, ct);
+        if (campaign == null) return null;
+
+        return campaign.ReplyRecords
+            .Where(r => r.Status == ReplyStatus.Pending)
+            .OrderBy(r => r.Id)
+            .FirstOrDefault();
+    }
+
+    public async Task<ReplyRecord?> ApproveAsync(int replyRecordId, CancellationToken ct = default)
+    {
+        var campaign = await _repository.GetByRecordIdAsync(replyRecordId, ct);
+        if (campaign == null) return null;
+
+        var record = campaign.ReplyRecords.FirstOrDefault(r => r.Id == replyRecordId);
+        if (record == null || record.Status != ReplyStatus.Pending) return null;
+
+        await DraftReplyAsync(campaign, record, ct);
+        await _repository.UpdateAsync(campaign, ct);
+        return record;
+    }
+
+    public async Task<int> ApproveAllAsync(int replyCampaignId, CancellationToken ct = default)
+    {
+        var campaign = await _repository.GetByIdAsync(replyCampaignId, ct);
+        if (campaign == null) throw new ArgumentException("Reply campaign not found");
+
+        var pending = campaign.ReplyRecords
+            .Where(r => r.Status == ReplyStatus.Pending)
+            .OrderBy(r => r.Id)
+            .ToList();
+
+        foreach (var record in pending)
+            await DraftReplyAsync(campaign, record, ct);
+
+        if (pending.Count > 0)
+            await _repository.UpdateAsync(campaign, ct);
+
+        return pending.Count;
+    }
+
+    /// <inheritdoc />
+    public async Task<int> RetryFailedAsync(int replyCampaignId, CancellationToken ct = default)
+    {
+        var campaign = await _repository.GetByIdAsync(replyCampaignId, ct);
+        if (campaign == null) throw new ArgumentException("Reply campaign not found");
+
+        var failed = campaign.ReplyRecords
+            .Where(r => r.Status == ReplyStatus.Failed)
+            .ToList();
+
+        foreach (var record in failed)
+        {
+            record.Status = ReplyStatus.Pending;
+            record.ErrorMessage = null;
+            record.MessageSent = null;      // will be re-drafted fresh
+            record.SentAt = null;
+            record.TemplateId = null;
+        }
+
+        campaign.RepliesFailed -= failed.Count;
+        campaign.RepliesPending += failed.Count;
+        campaign.Status = ReplyCampaignStatus.Running;
+        if (campaign.StartedAt == null) campaign.StartedAt = DateTime.UtcNow;
+        campaign.CompletedAt = null;
+
+        if (failed.Count > 0)
+            await _repository.UpdateAsync(campaign, ct);
+
+        return failed.Count;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> UpdateAsync(
+        int replyCampaignId, string name, int minDelaySeconds, int maxDelaySeconds, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            throw new ArgumentException("Campaign name is required.", nameof(name));
+        if (minDelaySeconds < 0 || maxDelaySeconds < 0)
+            throw new ArgumentException("Delay values must be zero or positive.");
+        if (maxDelaySeconds < minDelaySeconds)
+            throw new ArgumentException("Max delay must be greater than or equal to min delay.");
+
+        var campaign = await _repository.GetByIdAsync(replyCampaignId, ct);
+        if (campaign == null) return false;
+
+        campaign.Name = name.Trim();
+        campaign.MinDelaySeconds = minDelaySeconds;
+        campaign.MaxDelaySeconds = maxDelaySeconds;
+
+        await _repository.UpdateAsync(campaign, ct);
+        return true;
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> DeleteAsync(int replyCampaignId, CancellationToken ct = default)
+    {
+        var campaign = await _repository.GetByIdAsync(replyCampaignId, ct);
+        if (campaign == null) return false;
+
+        // Stop the background send loop first — it re-fetches the campaign every
+        // iteration and exits when the status is no longer Running (or the row is gone).
+        if (campaign.Status == ReplyCampaignStatus.Running)
+        {
+            campaign.Status = ReplyCampaignStatus.Paused;
+            await _repository.UpdateAsync(campaign, ct);
+        }
+
+        return await _repository.DeleteAsync(replyCampaignId, ct);
+    }
+
+    /// <summary>Drafts an AI-personalized reply grounded in the prospect's actual comment,
+    /// falling back to the least-used template if the LLM fails. Marks the record approved.</summary>
+    private async Task DraftReplyAsync(ReplyCampaign campaign, ReplyRecord record, CancellationToken ct)
+    {
+        var prospect = record.Prospect;
+
+        string message;
+        try
+        {
+            message = await _ollama.GenerateReplyAsync(
+                BuildCampaignContext(campaign),
+                prospect?.CommentText ?? string.Empty,
+                prospect?.PainPoint ?? string.Empty,
+                ct);
+            message = CleanReply(message);
+        }
+        catch
+        {
+            // LLM unavailable — fall back to template personalization
+            var template = PickTemplate(campaign);
+            if (template == null)
+                throw new InvalidOperationException("AI reply failed and reply campaign has no templates to fall back on.");
+            message = PersonalizeMessage(template.Body, prospect!);
+            record.TemplateId = template.Id;
+        }
+
+        // The reply's entire purpose is driving traffic to the campaign site: if the
+        // drafted message (AI or template) forgot the URL, append it before approval.
+        message = EnsureCampaignLink(message, campaign.Campaign?.ProductUrl);
+
+        record.MessageSent = message;
+        record.Status = ReplyStatus.Approved;
+        record.ScheduledAt = DateTime.UtcNow;
+        record.ErrorMessage = null;
+    }
+
+    /// <summary>
+    /// Guarantees the promotional link appears in the reply. The AI prompt asks for
+    /// the URL, but llama3 regularly omits it — so this is enforced here, in code.
+    /// Appends it as a casual closing line; handles bare-domain mentions and empty
+    /// messages. Returns the original message when the URL is already present.
+    /// </summary>
+    private static string EnsureCampaignLink(string message, string? productUrl)
+    {
+        if (string.IsNullOrWhiteSpace(productUrl))
+            return message;
+
+        var url = productUrl.Trim();
+        if (message.Contains(url, StringComparison.OrdinalIgnoreCase))
+            return message;
+
+        // Bare-domain mention without the scheme (e.g. "tubemailgorilla.xyz") counts.
+        var domain = url.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+            ? url[(url.IndexOf("//", StringComparison.Ordinal) + 2)..]
+            : url;
+        domain = domain.TrimEnd('/');
+        if (message.Contains(domain, StringComparison.OrdinalIgnoreCase))
+            return message;
+
+        if (string.IsNullOrWhiteSpace(message))
+            return url;
+
+        // The message already points at the site (e.g. the template says "…the full
+        // write-up is on my site:") — appending another "I wrote up…" phrase would
+        // read duplicated. Just add the bare URL as the natural completion.
+        var tail = message.Length <= 80 ? message : message[^80..];
+        if (tail.Contains("my site", StringComparison.OrdinalIgnoreCase) ||
+            tail.Contains("this site", StringComparison.OrdinalIgnoreCase) ||
+            tail.Contains("the guide", StringComparison.OrdinalIgnoreCase) ||
+            tail.Contains("write-up", StringComparison.OrdinalIgnoreCase))
+            return $"{message.Trim()} {url}";
+
+        return $"{message.Trim()}\n\nI wrote up how I fixed this on my site — {url}";
+    }
+
+    private static ReplyTemplate? PickTemplate(ReplyCampaign campaign) =>
+        campaign.Templates
+            .OrderBy(t => t.TimesUsed)
+            .ThenBy(t => t.Order)
+            .FirstOrDefault();
+
+    /// <summary>Recursively finds the longest string value inside a parsed JSON structure.
+    /// Used to unwrap replies the LLM wrongly wrapped in JSON objects/arrays.</summary>
+    private static string? FindLongestString(System.Text.Json.JsonElement element)
+    {
+        string? best = null;
+        void Visit(System.Text.Json.JsonElement el)
+        {
+            switch (el.ValueKind)
+            {
+                case System.Text.Json.JsonValueKind.String:
+                    var s = el.GetString();
+                    if (!string.IsNullOrWhiteSpace(s) && (best == null || s.Length > best.Length))
+                        best = s;
+                    break;
+                case System.Text.Json.JsonValueKind.Object:
+                    foreach (var p in el.EnumerateObject()) Visit(p.Value);
+                    break;
+                case System.Text.Json.JsonValueKind.Array:
+                    foreach (var item in el.EnumerateArray()) Visit(item);
+                    break;
+            }
+        }
+        Visit(element);
+        return best;
+    }
+
+    /// <summary>Strips markdown fences/quotes the LLM sometimes wraps replies in.</summary>
+    private static string CleanReply(string reply)
+    {
+        reply = reply.Trim();
+        if (reply.StartsWith("```"))
+        {
+            var start = reply.IndexOf('\n');
+            if (start >= 0) reply = reply[(start + 1)..];
+            var end = reply.LastIndexOf("```", StringComparison.Ordinal);
+            if (end > 0) reply = reply[..end];
+            reply = reply.Trim();
+        }
+
+        // Ollama occasionally ignores format:null and wraps the reply in a JSON
+        // object (e.g. {"reply": "..."} or {"price wars": {"text": "..."}}). If the
+        // reply parses as JSON, unwrap it recursively: take the longest string value
+        // anywhere inside the structure.
+        if (reply.StartsWith('{') || reply.StartsWith('['))
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(reply);
+                var longest = FindLongestString(doc.RootElement);
+                if (!string.IsNullOrWhiteSpace(longest)) reply = longest;
+            }
+            catch { /* not JSON — keep as-is */ }
+        }
+
+        // LLMs sometimes preface the actual reply with meta text.
+        var preambles = new[]
+        {
+            "Here's a potential reply:", "Here is a potential reply:",
+            "Here's a reply:", "Here's the reply:", "Reply:", "Sure, here's a reply:",
+            "Here's a reply that addresses the prospect's pain point and points them to the website for more information:",
+            "Here's a reply that addresses the prospect's pain point and points them to the website:",
+            "Here's a reply that addresses the prospect's pain point:",
+            "Here's a reply that addresses the prospect's comment and pain point:",
+            "Here's a reply that addresses their comment and pain point:",
+            "Here's a reply that addresses the prospect's comment:",
+            "Here's a reply that meets the requirements:",
+            "Here's a potential reply that addresses the prospect's comment:",
+            "Here's the potential reply:"
+        };
+        foreach (var p in preambles)
+        {
+            var idx = reply.IndexOf(p, StringComparison.OrdinalIgnoreCase);
+            if (idx >= 0) reply = reply[(idx + p.Length)..].Trim();
+        }
+
+        if (reply.Length > 1 && reply[0] == '"' && reply[^1] == '"')
+            reply = reply[1..^1];
+        return reply.Trim();
+    }
+
+    private static string PersonalizeMessage(string template, Prospect prospect)
+    {
+        return template
+            .Replace("{name}", prospect.AuthorName.Split(' ')[0])
+            .Replace("{pain_point}", prospect.PainPoint)
+            .Replace("{channel}", prospect.AuthorName);
+    }
+
+    private async Task<List<string>> GenerateTemplatesAsync(int campaignId, CancellationToken ct)
+    {
+        // campaignId here is the SOURCE campaign id (TubeMail Gorilla) — fetch it from
+        // the campaigns table (NOT the replycampaigns table) so the AI gets the real
+        // product context and the {product_url} placeholder resolves to the actual URL.
+        var sourceCampaign = await _campaignRepository.GetByIdAsync(campaignId);
+
+        // Ground the AI in real prospect comments from the source campaign
+        var prospects = await _prospects.GetByCampaignAsync(campaignId, minIntentScore: 60, ct: ct);
+        var sampleComments = prospects
+            .Where(p => !string.IsNullOrWhiteSpace(p.CommentText))
+            .OrderByDescending(p => p.IntentScore)
+            .Select(p => p.CommentText)
+            .ToList();
+
+        var context = BuildSourceCampaignContext(sourceCampaign);
+        List<string> templates;
+        try
+        {
+            templates = await _ollama.GenerateReplyTemplatesAsync(context, sampleComments, ct);
+        }
+        catch (Exception ex) when (
+            ex is HttpRequestException or TaskCanceledException or TimeoutException or IOException or SocketException)
+        {
+            // LLM host unreachable or slow (timeout/connection refused) — fall back to
+            // default templates so campaign creation NEVER throws an unhandled exception.
+            templates = DefaultTemplates();
+        }
+
+        // Resolve the {product_url} placeholder in any template (AI or fallback) to the
+        // campaign's real URL — a literal "{product_url}" must never reach a prospect.
+        var productUrl = sourceCampaign?.ProductUrl?.Trim() ?? string.Empty;
+        return templates
+            .Select(t => productUrl.Length == 0
+                ? t.Replace("{product_url}", string.Empty).Trim()
+                : t.Replace("{product_url}", productUrl))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Static fallback template bodies used when the LLM host is unreachable.
+    /// Each ends with the product URL (the only promotional element allowed).
+    /// </summary>
+    private static List<string> DefaultTemplates() => new()
+    {
+        "Hey! I know how tough that can be — I ran into the same thing. I wrote up how I handled it on my site if you want the full breakdown: {product_url}",
+        "This hit close to home. I put together a guide on my site that covers exactly this — might save you some time: {product_url}",
+        "Totally understand where you're coming from. I've shared what worked for me on my site — feel free to check it out: {product_url}",
+        "Great point! I actually wrote about this on my site — the full write-up is here if you're interested: {product_url}"
+    };
+
+    /// <summary>Builds the LLM context block from the SOURCE campaign (campaigns table)
+    /// describing what is being promoted. Used by template generation, which runs during
+    /// reply-campaign creation when no ReplyCampaign entity exists yet.</summary>
+    private static string BuildSourceCampaignContext(Campaign? c)
+    {
+        if (c == null)
+            return "Product outreach: no campaign details available.";
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"Product: {c.ProductName}");
+        sb.AppendLine($"Website link (the ONLY promotional element — end every reply with this exact URL): {c.ProductUrl}");
+        if (!string.IsNullOrWhiteSpace(c.ProductDescription))
+            sb.AppendLine($"What it does: {c.ProductDescription}");
+        if (!string.IsNullOrWhiteSpace(c.ValueProposition))
+            sb.AppendLine($"Value proposition: {c.ValueProposition}");
+        if (!string.IsNullOrWhiteSpace(c.TargetAudience))
+            sb.AppendLine($"Target audience: {c.TargetAudience}");
+        return sb.ToString();
+    }
+
+    /// <summary>Builds the LLM context block describing what is being promoted.</summary>
+    private static string BuildCampaignContext(ReplyCampaign? campaign)
+    {
+        var c = campaign?.Campaign;
+        if (c == null)
+            return "Product outreach: no campaign details available.";
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"Product: {c.ProductName}");
+        sb.AppendLine($"Website link (the ONLY promotional element — end every reply with this exact URL): {c.ProductUrl}");
+        if (!string.IsNullOrWhiteSpace(c.ProductDescription))
+            sb.AppendLine($"What it does: {c.ProductDescription}");
+        if (!string.IsNullOrWhiteSpace(c.ValueProposition))
+            sb.AppendLine($"Value proposition: {c.ValueProposition}");
+        if (!string.IsNullOrWhiteSpace(c.TargetAudience))
+            sb.AppendLine($"Target audience: {c.TargetAudience}");
+        return sb.ToString();
+    }
+
+    private List<string> GenerateInsights(ReplyCampaign campaign, List<ReplyRecord> records)
+    {
+        var insights = new List<string>();
+
+        if (campaign.RepliesSent > 0)
+            insights.Add($"Successfully sent {campaign.RepliesSent} replies with a {(campaign.RepliesSent * 100.0 / Math.Max(records.Count, 1)):F1}% success rate.");
+
+        if (campaign.RepliesFailed > 0)
+            insights.Add($"{campaign.RepliesFailed} replies failed — review error messages for patterns.");
+
+        var avgDelay = (campaign.MinDelaySeconds + campaign.MaxDelaySeconds) / 2.0;
+        insights.Add($"Average delay between replies: {avgDelay / 60:F1} minutes (anti-spam protection).");
+
+        var topTemplate = campaign.Templates.OrderByDescending(t => t.TimesUsed).FirstOrDefault();
+        if (topTemplate != null)
+            insights.Add($"Most used template: \"{topTemplate.Name}\" ({topTemplate.TimesUsed} times).");
+
+        return insights;
+    }
+
+    private List<string> GenerateRecommendations(ReplyCampaign campaign, List<ReplyRecord> records)
+    {
+        var recs = new List<string>();
+
+        if (campaign.RepliesFailed > campaign.RepliesSent)
+            recs.Add("Consider reviewing failed replies — you may be hitting rate limits or using outdated comment IDs.");
+
+        if (campaign.Templates.Count < 3)
+            recs.Add("Add more message templates to improve rotation and avoid repetitive messaging.");
+
+        if (records.Count > 0 && records.Count < 10)
+            recs.Add("Try lowering the minimum intent score to find more prospects.");
+
+        recs.Add("Monitor YouTube's rate limits — randomize delays further if you see increased failures.");
+
+        return recs;
+    }
+}

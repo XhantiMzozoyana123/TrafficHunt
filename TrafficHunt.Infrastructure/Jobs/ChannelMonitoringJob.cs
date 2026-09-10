@@ -62,7 +62,7 @@ public class ChannelMonitoringJob
 
             // Enqueue comment import
             BackgroundJob.Enqueue<CommentImportJob>(
-                job => job.RunAsync(campaignId, video.YouTubeVideoId, video.Title, 50));
+                job => job.RunAsync(campaignId, video.YouTubeVideoId, video.Title, 50, default(CancellationToken)));
         }
 
         _logger.LogInformation("Channel monitoring found {Count} new videos for channel {ChannelId}", videos.Count, channelId);

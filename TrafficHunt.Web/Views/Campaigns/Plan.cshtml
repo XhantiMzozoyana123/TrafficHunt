@@ -1,0 +1,79 @@
+@model CampaignPlanViewModel
+@{
+    ViewData["Title"] = "AI Plan a Campaign";
+}
+
+<div class="page-title">AI Plan a Campaign</div>
+<p class="page-sub">Describe what you're promoting in plain English. The AI generates the campaign skeleton (product, audience, problems, keywords) and saves it.</p>
+
+<div class="card" style="margin-bottom:18px">
+    <form method="post" asp-action="Plan" asp-antiforgery="true">
+        <div class="form-grid">
+            <div class="form-field full">
+                <label asp-for="Description">What are you promoting?</label>
+                <textarea asp-for="Description" required style="min-height:110px"
+                          placeholder="Example: A video outreach tool for freelance video editors struggling to find clients on YouTube."></textarea>
+                <span class="field-hint">The AI fills in product details, target audience, problems to solve, and discovery keywords.</span>
+            </div>
+            <div class="form-field">
+                <label asp-for="VideosPerKeyword">Videos per keyword</label>
+                <input asp-for="VideosPerKeyword" type="number" min="1" max="20" />
+                <span class="field-hint">Used when you kick off discovery after planning.</span>
+            </div>
+        </div>
+        <div class="btn-row" style="margin-top:14px">
+            <button class="btn" type="submit">Generate plan</button>
+            <a class="btn btn-ghost" asp-action="Index">Cancel</a>
+        </div>
+    </form>
+</div>
+
+@if (!string.IsNullOrEmpty(Model.Error))
+{
+    <div class="banner banner-error">@Model.Error</div>
+}
+
+@if (Model.Plan != null)
+{
+    var draft = Model.Plan.Draft;
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Generated plan — @draft.Name</h3>
+            <span class="badge active">Saved as campaign #@Model.Plan.CampaignId</span>
+        </div>
+
+        <dl class="kv">
+            <dt>Product</dt><dd>@draft.ProductName</dd>
+            <dt>URL</dt><dd>@draft.ProductUrl</dd>
+            <dt>Description</dt><dd>@draft.ProductDescription</dd>
+            <dt>Value proposition</dt><dd>@draft.ValueProposition</dd>
+            <dt>Target audience</dt><dd>@draft.TargetAudience</dd>
+            <dt>Primary problem</dt><dd>@draft.PrimaryProblem</dd>
+            <dt>Problems</dt>
+            <dd>@(draft.Problems.Count == 0 ? "—" : string.Join("; ", draft.Problems))</dd>
+            <dt>Keywords</dt>
+            <dd>
+                @if (draft.Keywords.Count == 0)
+                {
+                    <span>—</span>
+                }
+                else
+                {
+                    foreach (var k in draft.Keywords)
+                    {
+                        <span class="badge">@k</span> <text> </text>
+                    }
+                }
+            </dd>
+        </dl>
+
+        <div class="btn-row" style="margin-top:8px">
+            <form asp-action="RunDiscovery" method="post" asp-antiforgery="true" class="btn-row">
+                <input type="hidden" name="id" value="@Model.Plan.CampaignId" />
+                <input type="hidden" name="videosPerKeyword" value="@(Model.VideosPerKeyword ?? 3)" />
+                <button class="btn btn-success" type="submit">Run discovery now</button>
+            </form>
+            <a class="btn btn-ghost" asp-action="Details" asp-route-id="@Model.Plan.CampaignId">Open campaign</a>
+        </div>
+    </div>
+}

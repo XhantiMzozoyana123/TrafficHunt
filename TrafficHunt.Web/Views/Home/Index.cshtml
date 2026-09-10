@@ -1,0 +1,129 @@
+@model DashboardViewModel
+@{
+    ViewData["Title"] = "Dashboard";
+}
+
+<div class="page-title">Dashboard</div>
+<p class="page-sub">Global overview of the TrafficHunt engine — generated @Model.GeneratedAt.ToLocalTime().ToString("g").</p>
+
+<div class="grid cards">
+    <div class="card stat-card">
+        <div class="stat-value">@Model.TotalCampaigns</div>
+        <div class="stat-label">Campaigns</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-value tone-cyan">@Model.TotalProspects</div>
+        <div class="stat-label">Total prospects</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-value tone-violet">@Model.HighIntentProspects</div>
+        <div class="stat-label">High intent (≥ 80)</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-value tone-amber">@Model.ContactedProspects</div>
+        <div class="stat-label">Contacted</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-value tone-cyan">@Model.InterestedProspects</div>
+        <div class="stat-label">Interested</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-value tone-green">@Model.ConvertedProspects</div>
+        <div class="stat-label">Converted</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-value tone-green">@Model.RunningReplyCampaigns</div>
+        <div class="stat-label">Reply campaigns running</div>
+    </div>
+    <div class="card stat-card">
+        <div class="stat-value">@Model.RepliesSent</div>
+        <div class="stat-label">Replies sent</div>
+    </div>
+</div>
+
+<div class="grid cols-2">
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Recent Campaigns</h3>
+            <a class="btn btn-sm btn-ghost" asp-controller="Campaigns" asp-action="Index">View all</a>
+        </div>
+
+        @if (Model.Campaigns.Count == 0)
+        {
+            <div class="empty">No campaigns yet. <a class="link" asp-controller="Campaigns" asp-action="Create">Create one</a> or <a class="link" asp-controller="Campaigns" asp-action="Plan">let AI plan one</a>.</div>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr><th>Campaign</th><th class="num">Prospects</th><th>Status</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var c in Model.Campaigns.Take(6))
+                        {
+                            <tr>
+                                <td>
+                                    <a class="link" asp-controller="Campaigns" asp-action="Details" asp-route-id="@c.Id">@c.Name</a>
+                                    <div class="small muted">@c.ProductName</div>
+                                </td>
+                                <td class="num">@c.ProspectCount</td>
+                                <td><span class="badge @c.Status">@c.Status</span></td>
+                                <td class="num">
+                                    <a class="btn btn-sm btn-ghost" asp-controller="Campaigns" asp-action="Details" asp-route-id="@c.Id">Open</a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Recent Reply Campaigns</h3>
+            <a class="btn btn-sm btn-ghost" asp-controller="ReplyCampaigns" asp-action="Index">View all</a>
+        </div>
+
+        @if (Model.RecentReplyCampaigns.Count == 0)
+        {
+            <div class="empty">No reply campaigns yet. <a class="link" asp-controller="ReplyCampaigns" asp-action="Create">Create one</a> from a campaign's prospects.</div>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="table">
+                    <thead>
+                        <tr><th>Name</th><th class="num">Sent</th><th>Status</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var rc in Model.RecentReplyCampaigns)
+                        {
+                            <tr>
+                                <td><a class="link" asp-controller="ReplyCampaigns" asp-action="Details" asp-route-id="@rc.Id">@rc.Name</a></td>
+                                <td class="num">@rc.RepliesSent</td>
+                                <td><span class="badge @rc.Status">@rc.Status</span></td>
+                                <td class="num">
+                                    <a class="btn btn-sm btn-ghost" asp-controller="ReplyCampaigns" asp-action="Details" asp-route-id="@rc.Id">Open</a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="card" style="margin-top:16px">
+    <div class="card-header">
+        <h3 class="card-title">Quick actions</h3>
+    </div>
+    <div class="btn-row">
+        <a class="btn" asp-controller="Campaigns" asp-action="Plan">AI-plan a campaign</a>
+        <a class="btn btn-ghost" asp-controller="Campaigns" asp-action="Create">Create campaign</a>
+        <a class="btn btn-ghost" asp-controller="Jobs" asp-action="Index">Background jobs</a>
+        <a class="btn btn-ghost" href="/hangfire">Hangfire dashboard</a>
+    </div>
+</div>

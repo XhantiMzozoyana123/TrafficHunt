@@ -1,0 +1,12 @@
+{
+  "profiles": {
+    "TrafficHunt.Web": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "https://localhost:52955;http://localhost:52956"
+    }
+  }
+}

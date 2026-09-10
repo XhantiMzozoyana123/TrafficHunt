@@ -3,6 +3,9 @@ bin/
 obj/
 *.user
 appsettings.Development.json
+# Real appsettings with secrets (examples are tracked as *.example.json)
+TrafficHunt.Web/appsettings.json
+TrafficHunt.Mcp/appsettings.json
 
 # Node / React
 node_modules/
@@ -12,6 +15,7 @@ dist/
 .env
 .env.*
 *.pem
+config/appsettings.json
 
 # IDE
 .vs/

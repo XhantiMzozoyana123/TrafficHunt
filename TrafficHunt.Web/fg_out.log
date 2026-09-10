@@ -1,0 +1,25 @@
+Using launch settings from C:\Users\Xhanti\source\repos\TrafficHunt\TrafficHunt.Web\Properties\launchSettings.json...
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: https://localhost:52955
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://localhost:52956
+info: Hangfire.BackgroundJobServer[0]
+      Starting Hangfire Server using job storage: 'In-Memory Storage'
+info: Hangfire.BackgroundJobServer[0]
+      Using the following options for Hangfire Server:
+          Worker count: 10
+          Listening queues: 'youtube', 'ai', 'outreach', 'notifications', 'maintenance', 'default'
+          Shutdown timeout: 00:00:15
+          Schedule polling interval: 00:00:05
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Development
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: C:\Users\Xhanti\source\repos\TrafficHunt\TrafficHunt.Web
+info: Hangfire.Server.BackgroundServerProcess[0]
+      Server desktop-o9javm2:17284:70a77da4 successfully announced in 2.5906 ms
+info: Hangfire.Server.BackgroundServerProcess[0]
+      Server desktop-o9javm2:17284:70a77da4 is starting the registered dispatchers: ServerWatchdog, ServerJobCancellationWatcher, Worker, DelayedJobScheduler, RecurringJobScheduler...
+info: Hangfire.Server.BackgroundServerProcess[0]
+      Server desktop-o9javm2:17284:70a77da4 all the dispatchers started

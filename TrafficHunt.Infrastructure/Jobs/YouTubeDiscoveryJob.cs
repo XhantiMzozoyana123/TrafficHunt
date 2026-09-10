@@ -34,8 +34,9 @@ public class YouTubeDiscoveryJob
     /// <summary>
     /// Search YouTube for videos matching the campaign's keywords.
     /// Enqueues a CommentImportJob for each video found.
+    /// Hangfire injects a CancellationToken so the job can be killed from the UI.
     /// </summary>
-    public async Task RunAsync(int campaignId, int videosPerKeyword = 3)
+    public async Task RunAsync(int campaignId, int videosPerKeyword, CancellationToken ct)
     {
         var campaign = await _campaigns.GetByIdAsync(campaignId)
             ?? throw new InvalidOperationException($"Campaign {campaignId} not found.");
@@ -45,6 +46,7 @@ public class YouTubeDiscoveryJob
 
         foreach (var keyword in keywords)
         {
+            ct.ThrowIfCancellationRequested();
             _logger.LogInformation("Searching YouTube for keyword: {Keyword}", keyword);
 
             List<DiscoveredVideo> videos;
@@ -60,6 +62,7 @@ public class YouTubeDiscoveryJob
 
             foreach (var video in videos)
             {
+                ct.ThrowIfCancellationRequested();
                 // Store video if not already present
                 var existing = await _videos.GetByYouTubeIdAsync(campaignId, video.YouTubeVideoId);
                 if (existing is null)
@@ -76,7 +79,7 @@ public class YouTubeDiscoveryJob
 
                 // Enqueue comment import for this video
                 BackgroundJob.Enqueue<CommentImportJob>(
-                    job => job.RunAsync(campaignId, video.YouTubeVideoId, video.Title, 50));
+                    job => job.RunAsync(campaignId, video.YouTubeVideoId, video.Title, 50, default(CancellationToken)));
             }
         }
 

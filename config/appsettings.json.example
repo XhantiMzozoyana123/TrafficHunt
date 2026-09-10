@@ -1,0 +1,28 @@
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=db;Port=3306;Database=traffichunt;Uid=root;Pwd=;"
+  },
+  "GoogleAuth": {
+    "ClientId": "",
+    "ClientSecret": ""
+  },
+  "Ollama": {
+    "BaseUrl": "https://llm.processzero.xyz",
+    "Model": "llama3"
+  },
+  "YouTube": {
+    "ApiKey": null,
+    "OAuth": {
+      "AccessToken": null,
+      "RefreshToken": null,
+      "ExpiresAtUtc": null
+    }
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "AllowedHosts": "*"
+}

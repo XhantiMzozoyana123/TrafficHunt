@@ -8,10 +8,11 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
-                        services.AddScoped<ICampaignService, CampaignService>();
+        services.AddScoped<ICampaignService, CampaignService>();
         services.AddScoped<IProspectService, ProspectService>();
         services.AddScoped<IDiscoveryService, DiscoveryService>();
         services.AddScoped<ICampaignPlanner, CampaignPlannerService>();
+        services.AddScoped<IReplyCampaignService, ReplyCampaignService>();
         return services;
     }
 }

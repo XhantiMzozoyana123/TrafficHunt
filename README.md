@@ -20,16 +20,13 @@ Tomorrow it can promote TubeMail Gorilla; next month, point the exact same engin
 
 ## Architecture
 
-Clean Architecture with four .NET projects plus a React frontend:
+Clean Architecture with four .NET projects. The operator uses the MVC system UI — no separate SPA and no MCP server:
 
 ```
 ┌─────────────────────────────┐
-│      TrafficHunt.React      │  React 19 + TypeScript + Vite
-└──────────────┬──────────────┘
-               │ REST API (SSE for discovery progress)
-               ▼
-┌─────────────────────────────┐
-│      TrafficHunt.Web        │  Controllers + composition root only
+│      TrafficHunt.Web        │  ASP.NET Core MVC system UI (Razor)
+│  Controllers + Views + DI   │  Dashboard / Campaigns / Prospects /
+│  composition root only      │  Reply Campaigns / Background Jobs
 └──────────────┬──────────────┘
                │
     ┌──────────┴───────────┐
@@ -38,10 +35,10 @@ Clean Architecture with four .NET projects plus a React frontend:
 │ TrafficHunt       │  │ TrafficHunt.Infrastructure │
 │ .Application      │  │  EF Core + Pomelo (MySQL)  │
 │  Services         │  │  YoutubeExplode (search)   │
-│  Interfaces       │  │  YouTube Data API (comments│
-│  DTOs             │  │   + OAuth replies, M2)     │
-└─────────┬─────────┘  │  Ollama (AI reasoning)     │
-          ▼            └─────────────┬──────────────┘
+│  Interfaces       │  │  YouTube Data API (comments)│
+│  DTOs             │  │  Ollama (AI reasoning)     │
+└─────────┬─────────┘  └─────────────┬──────────────┘
+          ▼                          │
 ┌───────────────────┐                │
 │ TrafficHunt       │◄───────────────┘
 │ .Domain           │  Entities only, no dependencies
@@ -78,9 +75,8 @@ shipped assemblies (no comment types or endpoints remain in the library). So the
   and, in Milestone 2, the **only** write path (OAuth replies, gated by user approval).
 
 Later milestones: AI reply generation with **human approval** (the AI never publishes outreach
-automatically), YouTube OAuth replies, and an **MCP server** so an AI assistant can operate the
-engine (`get_campaign`, `search_youtube`, `find_prospects`, …) through the same Application
-services the REST API uses.
+automatically) and YouTube OAuth replies. Everything is operated from the built-in MVC console —
+the same Application services behind every page.
 
 ## The Operator Workflow
 
@@ -89,7 +85,7 @@ The whole point: **you type what you're promoting in plain English, and the AI d
 ```
 You: "A video outreach tool for freelance video editors struggling to find clients on YouTube"
     ↓
-AI (via MCP): generates campaign → audience → problems → keywords
+AI Planner (Campaigns → AI Plan): generates campaign → audience → problems → keywords
     ↓
 YoutubeExplode: searches videos per keyword
     ↓
@@ -100,18 +96,18 @@ Ollama: qualifies each comment — is this person looking for your solution?
 Prospects (MySQL), ranked by intent score
 ```
 
-The MCP server (`TrafficHunt.Mcp`) exposes this as a single `promote` tool — the AI calls it with your description and gets back the ranked prospect list. No manual keyword editing, no hand-crafting search terms.
+Open **Campaigns → AI Plan from Description**, paste your plain-English description, and the AI
+writes the campaign skeleton for you. Then run discovery from the campaign page and manage the
+resulting prospects and reply campaigns in the console.
 
 ## Projects
 
 | Project | Responsibility |
 | --- | --- |
-| `TrafficHunt.Domain` | Entities: Campaign, CampaignKeyword, CampaignProblem, Prospect, Video, Comment |
+| `TrafficHunt.Domain` | Entities: Campaign, CampaignKeyword, CampaignProblem, Prospect, Video, Comment, ReplyCampaign |
 | `TrafficHunt.Application` | Use cases, service + repository interfaces, DTOs |
-| `TrafficHunt.Infrastructure` | MySQL (Pomelo), YoutubeExplode, YouTube Data API, Ollama |
-| `TrafficHunt.Web` | ASP.NET Core controllers, DI composition root |
-| `TrafficHunt.Mcp` | MCP server — AI operator interface (JSON-RPC over stdio) |
-| `TrafficHunt.React` | Dashboard, Campaigns, Prospects UI |
+| `TrafficHunt.Infrastructure` | MySQL (Pomelo), YoutubeExplode, YouTube Data API, Ollama; Hangfire jobs |
+| `TrafficHunt.Web` | ASP.NET Core **MVC system UI** (controllers, Razor views, DI composition root) |
 
 ## Setup
 
@@ -163,47 +159,23 @@ The MCP server (`TrafficHunt.Mcp`) exposes this as a single `promote` tool — t
    ```
 
 
-### Frontend
+### System UI
 
-```powershell
-cd TrafficHunt.React
-npm install
-npm run dev
+There is no separate frontend — run the Web project and open the browser to the MVC console:
+
 ```
-
-The dev server proxies `/api` to `http://localhost:5000`.
+/                  Dashboard — global stats, recent campaigns, quick actions
+/campaigns         Campaign list (create, edit, delete, AI plan)
+/campaigns/{id}    Campaign detail — keywords, discovery, top prospects, reply campaigns
+/prospects         Prospects, filtered by campaign / status / intent score
+/replycampaigns    Reply campaigns — create from prospects, start/pause, delivery + AI analytics
+/jobs              Hangfire overview — queues, recurring jobs, enqueue discovery
+/hangfire          Hangfire dashboard (dev only)
+```
 
 ### Running the MCP Server
 
-The MCP server is a console app that speaks JSON-RPC over stdio. Point your AI client (e.g. Claude Desktop, Cursor, VS Code) at it:
-
-```powershell
-dotnet run --project TrafficHunt.Mcp
-```
-
-Or configure it in your client's settings (example for Claude Desktop's `claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "TrafficHunt": {
-      "command": "dotnet",
-      "args": ["run", "--project", "C:\\Users\\Xhanti\\source\\repos\\TrafficHunt\\TrafficHunt.Mcp"]
-    }
-  }
-}
-```
-
-### MCP Tools
-
-| Tool | Purpose |
-| --- | --- |
-| `promote` | **Primary entry point.** Give it a plain-English description of what you're promoting — the AI generates the campaign, runs discovery, and returns ranked prospects. |
-| `find_prospects` | List prospects for a campaign (filter by intent score or status). |
-| `get_prospect` | Get full details of a single prospect. |
-| `generate_reply` | Generate a personalized outreach reply (Milestone 2). |
-| `update_prospect_status` | Move a prospect through the pipeline (New → Contacted → Interested → Converted/Rejected). |
-| `get_campaign` | Get campaign configuration and global stats. |
+Removed. TrafficHunt is operated entirely through the MVC console above.
 
 ## Hangfire Job Pipeline
 
@@ -246,28 +218,25 @@ RecurringJob.AddOrUpdate<ChannelMonitoringJob>(
     Cron.Hourly(6));
 ```
 
-### MCP + Hangfire
+From the console, discovery is always enqueued as a Hangfire job (`BackgroundJob.Enqueue<YouTubeDiscoveryJob>`)
+from the campaign detail page or the Background Jobs page — it returns a `jobId` immediately for
+large-scale work, and the job page shows progress.
 
-The MCP `promote` tool can either run discovery inline (small campaigns) or **enqueue a Hangfire job** and return a `jobId` immediately for large-scale work — the AI then polls `get_job_status`.
+## System UI Pages
 
-## API Surface (Milestone 1)
-
-| Method | Route | Purpose |
-| --- | --- | --- |
-| GET/POST/PUT/DELETE | `/api/campaigns` | Campaign CRUD |
-| POST | `/api/campaigns/{id}/keywords` | Add discovery keyword |
-| DELETE | `/api/campaigns/keywords/{id}` | Remove keyword |
-| GET | `/api/campaigns/{id}/stats` | Campaign stats |
-| GET | `/api/prospects?campaignId=&status=&minIntentScore=` | Filtered prospects |
-| PATCH | `/api/prospects/{id}/status` | Update prospect status |
-| GET | `/api/prospects/stats/global` | Global stats |
-| POST | `/api/discovery/{campaignId}/run` | Run discovery (SSE progress stream) |
+| Route | Purpose |
+| --- | --- |
+| `/` | Dashboard — global stats, recent campaigns, quick actions |
+| `/campaigns` | Campaign CRUD + **AI Plan from Description** |
+| `/campaigns/{id}` | Campaign detail — stats, keywords, run discovery, top prospects |
+| `/prospects` | Filtered prospects by campaign / status / intent score; status updates |
+| `/replycampaigns` | Reply campaigns — create, start/pause, delivery breakdown, AI analytics |
+| `/jobs` | Hangfire overview — queues, recurring jobs, recent jobs, enqueue discovery |
 
 ## Roadmap
 
-- **Milestone 1** ✅ — Campaigns → discovery → AI qualification → prospects
+- **Milestone 1** ✅ — Campaigns → discovery → AI qualification → prospects (MVC console)
 - **Milestone 2** — Reply generation, review editor, YouTube OAuth, approved replies
-- **Milestone 3** ✅ — MCP server: the AI as TrafficHunt operator (`promote` drives the whole pipeline)
 
 ## Human Approval Boundary
 

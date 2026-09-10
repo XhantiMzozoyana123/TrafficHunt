@@ -1,0 +1,357 @@
+@model ReplyCampaignDetailViewModel
+@{
+    ViewData["Title"] = Model.Campaign.Name;
+    var rc = Model.Campaign;
+}
+
+<div class="page-title">@rc.Name</div>
+<p class="page-sub muted">Source campaign: @(string.IsNullOrEmpty(Model.CampaignName) ? "—" : Model.CampaignName)</p>
+
+<div class="btn-row" style="margin-bottom:18px">
+    <a class="btn btn-ghost" asp-action="Index">&larr; Back</a>
+
+        @if (rc.Status == TrafficHunt.Domain.Entities.ReplyCampaignStatus.Draft)
+        {
+            <form asp-action="Start" method="post" asp-antiforgery="true" style="display:inline">
+                <input type="hidden" name="id" value="@rc.Id" />
+                <button class="btn btn-success" type="submit">Start</button>
+            </form>
+        }
+        @if (rc.Status == TrafficHunt.Domain.Entities.ReplyCampaignStatus.Paused)
+        {
+            <form asp-action="Resume" method="post" asp-antiforgery="true" style="display:inline">
+                <input type="hidden" name="id" value="@rc.Id" />
+                <button class="btn btn-success" type="submit">Resume</button>
+            </form>
+        }
+        @if (rc.Status == TrafficHunt.Domain.Entities.ReplyCampaignStatus.Running)
+        {
+            <form asp-action="Pause" method="post" asp-antiforgery="true" style="display:inline">
+                <input type="hidden" name="id" value="@rc.Id" />
+                <button class="btn btn-amber" type="submit">Pause</button>
+            </form>
+        }
+
+    @if (Model.Records.Any(r => r.Status == TrafficHunt.Domain.Entities.ReplyStatus.Pending))
+    {
+        <form asp-action="ApproveAll" method="post" asp-antiforgery="true" style="display:inline">
+            <input type="hidden" name="id" value="@rc.Id" />
+            <button class="btn btn-cyan" type="submit" onclick="return confirm('Draft and approve ALL pending replies? Review them in the table before starting the campaign.')">Approve all pending</button>
+        </form>
+    }
+
+    @if (Model.Records.Any(r => r.Status == TrafficHunt.Domain.Entities.ReplyStatus.Failed))
+    {
+        <form asp-action="RetryFailed" method="post" asp-antiforgery="true" style="display:inline">
+            <input type="hidden" name="id" value="@rc.Id" />
+            <button class="btn btn-red" type="submit" onclick="return confirm('Reset ALL failed replies to pending? They will be re-drafted with a fresh AI message and re-sent.')">Retry failed (@Model.Records.Count(r => r.Status == TrafficHunt.Domain.Entities.ReplyStatus.Failed))</button>
+        </form>
+    }
+
+    <a class="btn btn-amber" href="/ReplyCampaigns/Edit/@rc.Id">Edit</a>
+    <form asp-action="Delete" method="post" asp-antiforgery="true" style="display:inline">
+        <input type="hidden" name="id" value="@rc.Id" />
+        <button class="btn btn-red" type="submit" onclick="return confirm('Delete this reply campaign and ALL its reply records (sent + pending)? This cannot be undone.')">Delete</button>
+    </form>
+
+    <span class="badge @rc.Status">@rc.Status</span>
+</div>
+
+<div class="grid cards" style="margin-bottom:18px" id="campaignStats">
+    <div class="card stat-card"><div class="stat-value tone-green" id="c-sent">@rc.RepliesSent</div><div class="stat-label">Sent</div></div>
+    <div class="card stat-card"><div class="stat-value" id="c-pending">@rc.RepliesPending</div><div class="stat-label">Pending</div></div>
+    <div class="card stat-card"><div class="stat-value tone-red" id="c-failed">@rc.RepliesFailed</div><div class="stat-label">Failed</div></div>
+    <div class="card stat-card">
+        <div class="stat-value tone-cyan">@(rc.MinDelaySeconds)-@(rc.MaxDelaySeconds)s</div>
+        <div class="stat-label">Delay range</div>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom:18px">
+    <h3 class="card-title" style="margin-bottom:8px">Delivery</h3>
+    <div class="progress">
+        <span class="p-sent" style="width:@Model.SentPercent%"></span>
+        <span class="p-pending" style="width:@Model.PendingPercent%"></span>
+        <span class="p-failed" style="width:@Model.FailedPercent%"></span>
+    </div>
+    <div class="legend">
+        <span class="l-sent"><i></i>Sent</span>
+        <span class="l-pending"><i></i>Pending</span>
+        <span class="l-failed"><i></i>Failed</span>
+        </div>
+</div>
+
+<div class="card" style="margin-bottom:18px">
+    <div class="card-header">
+        <h3 class="card-title">Live job log</h3>
+        <span class="small muted" id="logStatus">real-time · streams this campaign's Hangfire jobs</span>
+    </div>
+    <div class="log-console-wrap" style="max-height:320px">
+        <div id="campaignLog" class="log-console" style="min-height:100px">
+            <p class="small muted">Waiting for the next job run…</p>
+        </div>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(rc.StartedAt?.ToString()) || !string.IsNullOrEmpty(rc.CompletedAt?.ToString()))
+{
+    <div class="grid cols-2" style="margin-bottom:18px">
+        <div class="card">
+            <h3 class="card-title" style="margin-bottom:6px">Started</h3>
+            <p class="small muted">@(rc.StartedAt?.ToLocalTime().ToString("g") ?? "—")</p>
+        </div>
+        <div class="card">
+            <h3 class="card-title" style="margin-bottom:6px">Completed</h3>
+            <p class="small muted">@(rc.CompletedAt?.ToLocalTime().ToString("g") ?? "—")</p>
+        </div>
+    </div>
+}
+
+<div class="grid cols-2">
+    <div class="card">
+        <h3 class="card-title" style="margin-bottom:10px">Reply templates (@rc.Templates.Count)</h3>
+        @if (rc.Templates.Count == 0)
+        {
+            <p class="small muted">No templates.</p>
+        }
+        else
+        {
+            <div id="recordsBody">
+            <div class="table-wrap">
+                <table class="table">
+                    <thead><tr><th>#</th><th>Body</th><th class="num">Used</th></tr></thead>
+                    <tbody>
+                        @foreach (var t in rc.Templates.OrderBy(x => x.Order))
+                        {
+                            <tr>
+                                <td>@(t.Order + 1)</td>
+                                <td class="small" style="max-width:340px">@t.Body</td>
+                                <td class="num">@t.TimesUsed</td>
+                            </tr>
+                        }
+                    </tbody>
+                                </table>
+            </div>
+            </div>
+        }
+    </div>
+
+    @if (Model.Analytics != null)
+    {
+        <div class="card">
+            <h3 class="card-title" style="margin-bottom:10px">AI analytics</h3>
+            <p class="small">@Model.Analytics.Summary</p>
+
+            @if (Model.Analytics.Insights.Count > 0)
+            {
+                <h4 class="card-title" style="margin:14px 0 6px;font-size:13px">Insights</h4>
+                <ul class="small">
+                    @foreach (var i in Model.Analytics.Insights)
+                    {
+                        <li>@i</li>
+                    }
+                </ul>
+            }
+            @if (Model.Analytics.Recommendations.Count > 0)
+            {
+                <h4 class="card-title" style="margin:14px 0 6px;font-size:13px">Recommendations</h4>
+                <ul class="small">
+                    @foreach (var r in Model.Analytics.Recommendations)
+                    {
+                        <li>@r</li>
+                    }
+                </ul>
+            }
+        </div>
+    }
+</div>
+
+@section Scripts {
+<script>
+    const campaignId = @rc.Id;
+    async function refreshCampaign() {
+        try {
+            const r = await fetch('/replycampaigns/getstatus/' + campaignId);
+            if (!r.ok) return;
+            const d = await r.json();
+
+            const total = d.total || 1;
+            const sentP = d.sent * 100.0 / total;
+            const pendP = d.pending * 100.0 / total;
+            const failP = d.failed * 100.0 / total;
+
+            const bar = document.querySelector('.progress');
+            if (bar) {
+                bar.querySelector('.p-sent').style.width = sentP + '%';
+                bar.querySelector('.p-pending').style.width = pendP + '%';
+                bar.querySelector('.p-failed').style.width = failP + '%';
+            }
+            const vals = document.querySelectorAll('#statCards .stat-value, .grid.cards .stat-value');
+            // sent, pending, failed
+            const statCards = document.querySelectorAll('.grid.cards .stat-card .stat-value');
+            if (statCards.length >= 3) {
+                statCards[0].textContent = d.sent;
+                statCards[1].textContent = d.pending;
+                statCards[2].textContent = d.failed;
+            }
+            const badge = document.querySelector('.btn-row .badge');
+            if (badge) { badge.textContent = d.status; badge.className = 'badge ' + d.status; }
+
+            // rebuild records table
+            let html = '<div class="table-wrap"><table class="table"><thead><tr><th>Prospect</th><th>Comment</th><th>Message</th><th>Status</th><th>Sent</th><th></th></tr></thead><tbody>';
+            for (const rec of d.records) {
+                const badgeCls = 'badge ' + rec.status;
+                html += '<tr>'
+                    + '<td><a class="link" href="/Prospects/Details/' + rec.id + '">' + (rec.prospect||'—') + '</a></td>'
+                    + '<td class="small muted" style="max-width:260px">' + (rec.comment||'') + '</td>'
+                    + '<td class="small" style="max-width:280px">' + (rec.messageSent ? rec.messageSent.substring(0,90) : '—') + '</td>'
+                    + '<td><span class="' + badgeCls + '">' + rec.status + '</span></td>'
+                    + '<td class="small muted">' + (rec.sentAt||'—') + '</td>'
+                    + '<td class="num">' + (rec.errorMessage ? '<span class="small muted" title="' + rec.errorMessage + '">⚠</span>' : '') + '</td>'
+                    + '</tr>';
+            }
+            html += '</tbody></table></div>';
+            const recordsBody = document.getElementById('recordsBody');
+            if (recordsBody) recordsBody.innerHTML = html;
+        } catch (e) { /* transient */ }
+    }
+        setInterval(refreshCampaign, 5000);
+    refreshCampaign();
+
+    /* ---- Live Reply-Campaign job log (polls /logs/recent?campaignId=…) ---- */
+    var jobLogSince = 0;
+    function escLog(s) {
+        if (s == null) return '';
+        return String(s).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+    function fmtTimeLog(iso) {
+        try { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
+        catch { return iso; }
+    }
+    async function refreshJobLog() {
+        var el = document.getElementById('campaignLog');
+        if (!el) return;
+        try {
+            var r = await fetch('/logs/recent?campaignId=' + campaignId + '&sinceId=' + jobLogSince + '&limit=80');
+            if (!r.ok) return;
+            var d = await r.json();
+            var rows = d.entries || [];
+            if (!rows.length) return;
+            var html = '';
+            for (var i = 0; i < rows.length; i++) {
+                var e = rows[i];
+                var cls = e.levelClass || '';
+                var cat = (e.category || '').split('.').pop() || e.category;
+                var line = '<div class="log-row ' + cls + '">'
+                    + '<span class="log-time muted">' + fmtTimeLog(e.time) + '</span>'
+                    + '<span class="log-lvl ' + cls + '">' + escLog(e.level) + '</span>'
+                    + '<span class="log-cat muted">' + escLog(cat) + '</span>'
+                    + '<span class="log-msg">' + escLog(e.message) + '</span>';
+                if (e.campaignId != null) line += '<span class="muted">campaign ' + e.campaignId + '</span>';
+                if (e.jobId) line += '<span class="muted">job ' + escLog(e.jobId) + '</span>';
+                line += '</div>';
+                html += line;
+            }
+            el.insertAdjacentHTML('beforeend', html);
+            jobLogSince = rows[rows.length - 1].id;
+            el.querySelector('.small').style.display = 'none';
+            var wrap = el.parentElement;
+            wrap.scrollTop = wrap.scrollHeight;
+        } catch (_) { /* keep polling */ }
+    }
+    setInterval(refreshJobLog, 2000);
+    refreshJobLog();
+</script>
+}
+
+<script>
+    // Live campaign stats: poll the counters so Sent/Pending/Failed appear to
+    // tick up while the campaign runs in the background. Reloads once when the
+    // status changes (Running -> Completed/Paused, or a resume kicks back in).
+    function refreshStats() {
+        fetch('/replycampaigns/getstatus/@rc.Id', { headers: { 'Accept': 'application/json' } })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                var sentEl = document.getElementById('c-sent');
+                if (sentEl) sentEl.textContent = d.sent;
+                var pendEl = document.getElementById('c-pending');
+                if (pendEl) pendEl.textContent = d.pending;
+                var failEl = document.getElementById('c-failed');
+                if (failEl) failEl.textContent = d.failed;
+
+                var total = d.total || 1;
+                var pSent = document.querySelector('.p-sent');
+                var pPend = document.querySelector('.p-pending');
+                var pFail = document.querySelector('.p-failed');
+                if (pSent) pSent.style.width = (d.sent * 100 / total) + '%';
+                if (pPend) pPend.style.width = (d.pending * 100 / total) + '%';
+                if (pFail) pFail.style.width = (d.failed * 100 / total) + '%';
+
+                var current = '@rc.Status';
+                if (current === 'Running' && (d.status === 'Completed' || d.status === 'Paused' || d.status === 'Draft'))
+                    window.location.reload();
+                else if (current === 'Paused' && d.status === 'Running')
+                    window.location.reload();
+                else if (current === 'Draft' && d.status === 'Running')
+                    window.location.reload();
+            })
+            .catch(function () { /* keep polling */ });
+    }
+    setInterval(refreshStats, 3000);
+    refreshStats();
+</script>
+
+<div class="card" style="margin-top:16px">
+    <h3 class="card-title" style="margin-bottom:10px">Reply records (@Model.Records.Count)</h3>
+    @if (Model.Records.Count == 0)
+    {
+        <p class="small muted">No reply records yet.</p>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Prospect</th>
+                        <th>Comment</th>
+                        <th>Message</th>
+                        <th>Status</th>
+                        <th>Sent</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in Model.Records)
+                    {
+                        <tr>
+                            <td>
+                                <a class="link" asp-controller="Prospects" asp-action="Details" asp-route-id="@r.ProspectId">@r.Prospect?.AuthorName</a>
+                            </td>
+                            <td class="small muted" style="max-width:260px">@r.Prospect?.CommentText</td>
+                            <td class="small" style="max-width:280px">@(r.MessageSent ?? "—")</td>
+                            <td><span class="badge @r.Status">@r.Status</span></td>
+                            <td class="small muted">@(r.SentAt?.ToLocalTime().ToString("g") ?? "—")</td>
+                            <td class="num">
+                                @if (r.Status == TrafficHunt.Domain.Entities.ReplyStatus.Pending)
+                                {
+                                    <form asp-action="Approve" method="post" asp-antiforgery="true" style="display:inline">
+                                        <input type="hidden" name="recordId" value="@r.Id" />
+                                        <input type="hidden" name="replyCampaignId" value="@rc.Id" />
+                                        <button class="btn btn-sm btn-success" type="submit" title="Draft, review and approve this reply">Approve</button>
+                                    </form>
+                                }
+                                @if (!string.IsNullOrEmpty(r.ErrorMessage))
+                                {
+                                    <span class="small muted" title="@r.ErrorMessage">⚠</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>

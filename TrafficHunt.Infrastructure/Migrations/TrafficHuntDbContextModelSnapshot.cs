@@ -146,11 +146,13 @@ namespace TrafficHunt.Infrastructure.Migrations
 
                     b.Property<string>("AuthorChannelId")
                         .IsRequired()
-                        .HasColumnType("longtext");
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
 
                     b.Property<string>("AuthorName")
                         .IsRequired()
-                        .HasColumnType("longtext");
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
 
                     b.Property<DateTime>("CollectedAt")
                         .HasColumnType("datetime(6)");
@@ -170,9 +172,12 @@ namespace TrafficHunt.Infrastructure.Migrations
 
                     b.Property<string>("YouTubeCommentId")
                         .IsRequired()
+                        .HasMaxLength(255)
                         .HasColumnType("varchar(255)");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("VideoId");
 
                     b.HasIndex("VideoId", "YouTubeCommentId")
                         .IsUnique();
@@ -257,6 +262,139 @@ namespace TrafficHunt.Infrastructure.Migrations
                     b.ToTable("Prospects");
                 });
 
+            modelBuilder.Entity("TrafficHunt.Domain.Entities.ReplyCampaign", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CampaignId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<int>("MaxDelaySeconds")
+                        .HasColumnType("int");
+
+                    b.Property<int>("MinDelaySeconds")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<int>("RepliesFailed")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RepliesPending")
+                        .HasColumnType("int");
+
+                    b.Property<int>("RepliesSent")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CampaignId");
+
+                    b.ToTable("ReplyCampaigns");
+                });
+
+            modelBuilder.Entity("TrafficHunt.Domain.Entities.ReplyRecord", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("MessageSent")
+                        .HasColumnType("longtext");
+
+                    b.Property<int>("ProspectId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ReplyCampaignId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("ScheduledAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime?>("SentAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("varchar(20)");
+
+                    b.Property<int?>("TemplateId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProspectId");
+
+                    b.HasIndex("TemplateId");
+
+                    b.HasIndex("ReplyCampaignId", "Status");
+
+                    b.ToTable("ReplyRecords");
+                });
+
+            modelBuilder.Entity("TrafficHunt.Domain.Entities.ReplyTemplate", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("varchar(200)");
+
+                    b.Property<int>("Order")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ReplyCampaignId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TimesUsed")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReplyCampaignId");
+
+                    b.ToTable("ReplyTemplates");
+                });
+
             modelBuilder.Entity("TrafficHunt.Domain.Entities.Video", b =>
                 {
                     b.Property<int>("Id")
@@ -339,6 +477,53 @@ namespace TrafficHunt.Infrastructure.Migrations
                     b.Navigation("Campaign");
                 });
 
+            modelBuilder.Entity("TrafficHunt.Domain.Entities.ReplyCampaign", b =>
+                {
+                    b.HasOne("TrafficHunt.Domain.Entities.Campaign", "Campaign")
+                        .WithMany()
+                        .HasForeignKey("CampaignId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Campaign");
+                });
+
+            modelBuilder.Entity("TrafficHunt.Domain.Entities.ReplyRecord", b =>
+                {
+                    b.HasOne("TrafficHunt.Domain.Entities.Prospect", "Prospect")
+                        .WithMany()
+                        .HasForeignKey("ProspectId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TrafficHunt.Domain.Entities.ReplyCampaign", "ReplyCampaign")
+                        .WithMany("ReplyRecords")
+                        .HasForeignKey("ReplyCampaignId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("TrafficHunt.Domain.Entities.ReplyTemplate", "Template")
+                        .WithMany()
+                        .HasForeignKey("TemplateId");
+
+                    b.Navigation("Prospect");
+
+                    b.Navigation("ReplyCampaign");
+
+                    b.Navigation("Template");
+                });
+
+            modelBuilder.Entity("TrafficHunt.Domain.Entities.ReplyTemplate", b =>
+                {
+                    b.HasOne("TrafficHunt.Domain.Entities.ReplyCampaign", "ReplyCampaign")
+                        .WithMany("Templates")
+                        .HasForeignKey("ReplyCampaignId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ReplyCampaign");
+                });
+
             modelBuilder.Entity("TrafficHunt.Domain.Entities.Video", b =>
                 {
                     b.HasOne("TrafficHunt.Domain.Entities.Campaign", "Campaign")
@@ -357,6 +542,13 @@ namespace TrafficHunt.Infrastructure.Migrations
                     b.Navigation("Problems");
 
                     b.Navigation("Prospects");
+                });
+
+            modelBuilder.Entity("TrafficHunt.Domain.Entities.ReplyCampaign", b =>
+                {
+                    b.Navigation("ReplyRecords");
+
+                    b.Navigation("Templates");
                 });
 
             modelBuilder.Entity("TrafficHunt.Domain.Entities.Video", b =>

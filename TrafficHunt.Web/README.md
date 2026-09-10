@@ -1,62 +1,39 @@
-# TrafficHunt Backend
+# TrafficHunt.Web
 
-Private AI-powered customer acquisition and outreach API. Not a SaaS — single operator, no auth/tenancy.
+Private AI-powered customer acquisition and outreach — an **ASP.NET Core MVC system console** for a single
+operator (no auth, no tenancy).
 
 ## Stack
 
-- ASP.NET Core Web API (.NET 10)
-- MySQL + EF Core (Pomelo)
-- YoutubeExplode (discovery — search videos, collect comments)
-- Ollama (AI qualification + reply generation)
-- MCP server stubs in `Mcp/` (Milestone 3)
+- ASP.NET Core MVC (Razor views) on .NET 10
+- MySQL + EF Core (Pomelo), Code First
+- YoutubeExplode (discovery — video search) + YouTube Data API v3 (comment collection)
+- Ollama (AI qualification + reply generation + campaign planning)
+- Hangfire (background jobs: discovery, analysis, reply rotation, maintenance)
 
-## Setup
+## Responsibilities
 
-1. Create the database (EF migrations or `context.Database.EnsureCreated()`):
+This project is the **composition root and the presentation layer** only:
 
-   ```powershell
-   dotnet ef migrations add InitialCreate
-   dotnet ef database update
-   ```
+- MVC controllers + Razor views (the system UI)
+- DI wiring: `AddApplication()` → `AddInfrastructure()`, Hangfire server + jobs, recurring schedules
+- `wwwroot/css/site.css` + `wwwroot/js/site.js` — self-contained dark "console" styling (no CDN)
 
-2. Edit `appsettings.json` — set your MySQL password. For local secrets:
+Pages: Dashboard (`/`), Campaigns (list / detail / create / edit / AI plan), Prospects, Reply Campaigns,
+Background Jobs (`/jobs`), plus the Hangfire dashboard (`/hangfire`, dev only).
 
-   ```powershell
-   dotnet user-secrets init
-   dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Server=localhost;Port=3306;Database=traffichunt;User=root;Password=..."
-   ```
+The project references `TrafficHunt.Application` and `TrafficHunt.Infrastructure`. Domain logic lives
+in the other Clean-Architecture projects; nothing in the Web layer bypasses the Application services.
 
-3. Install Ollama (https://ollama.com) and pull a model:
+## Run
 
-   ```powershell
-   ollama pull llama3.1
-   ```
-
-4. Run:
-
-   ```powershell
-   dotnet run
-   ```
-
-## API surface (Milestone 1)
-
-- `GET/POST/PUT/DELETE /api/campaigns` — campaign CRUD
-- `POST /api/campaigns/{id}/keywords` · `DELETE /api/campaigns/keywords/{id}`
-- `GET /api/campaigns/{id}/stats`
-- `GET /api/prospects?campaignId=&status=&minIntentScore=`
-- `PATCH /api/prospects/{id}/status`
-- `GET /api/prospects/stats/global`
-- `POST /api/discovery/{campaignId}/run` — SSE stream of discovery progress
-
-## Pipeline
-
-```
-Campaign keywords → YoutubeExplode search → collect comments
-    → Ollama qualification (structured JSON) → Prospects (MySQL)
+```powershell
+dotnet run --project TrafficHunt.Web
 ```
 
-## Human approval boundary
+Point a browser at the `launchSettings` URL (https://localhost:52955 by default).
+Requires MySQL reachable at the connection string in `appsettings.json` and, for AI features, an
+Ollama instance configured under `Ollama:`.
 
-The AI can search, analyze, score and generate replies, but never publishes
-outreach automatically. Sending replies (Milestone 2, YouTube Data API + OAuth)
-always requires explicit user approval.
+> Note for XAMPP MySQL: the connection string uses `root` with an empty password by default — override
+> with `dotnet user-secrets set "ConnectionStrings:DefaultConnection" "..."` in this project.

@@ -30,8 +30,9 @@ public class CommentImportJob
     /// <summary>
     /// Fetch comments for a video and enqueue analysis for each new comment.
     /// </summary>
-    public async Task RunAsync(int campaignId, string youTubeVideoId, string videoTitle, int commentsPerVideo = 50)
+    public async Task RunAsync(int campaignId, string youTubeVideoId, string videoTitle, int commentsPerVideo, CancellationToken ct)
     {
+        ct.ThrowIfCancellationRequested();
         _logger.LogInformation("Importing comments for video {VideoId}", youTubeVideoId);
 
         List<CollectedComment> comments;
@@ -47,13 +48,15 @@ public class CommentImportJob
 
         foreach (var comment in comments)
         {
+            ct.ThrowIfCancellationRequested();
+
             // Skip if already qualified
             if (await _prospects.ExistsAsync(campaignId, comment.YouTubeCommentId))
                 continue;
 
             // Enqueue AI analysis for this comment
             BackgroundJob.Enqueue<CommentAnalysisJob>(
-                job => job.RunAsync(campaignId, youTubeVideoId, videoTitle, comment));
+                job => job.RunAsync(campaignId, youTubeVideoId, videoTitle, comment, default(CancellationToken)));
         }
 
         _logger.LogInformation("Imported {Count} comments for video {VideoId}", comments.Count, youTubeVideoId);

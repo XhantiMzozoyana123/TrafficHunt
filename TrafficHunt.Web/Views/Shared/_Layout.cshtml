@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - TrafficHunt</title>
+    <link rel="stylesheet" href="~/lib/introjs/introjs.min.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body data-page="@ViewContext.RouteData.Values["controller"]" data-action="@ViewContext.RouteData.Values["action"]">
+    <div class="app">
+        <aside class="sidebar">
+            <div class="brand">
+                <span class="brand-mark">TH</span>
+                <span class="brand-name">TrafficHunt</span>
+            </div>
+
+            <nav class="nav">
+                <span class="nav-label">Console</span>
+                <a asp-controller="Home" asp-action="Index" class="nav-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Home" ? "active" : "")">
+                    <span class="nav-icon">▤</span> Dashboard
+                </a>
+                <a asp-controller="Campaigns" asp-action="Index" class="nav-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Campaigns" ? "active" : "")">
+                    <span class="nav-icon">◈</span> Campaigns
+                </a>
+                <a asp-controller="Prospects" asp-action="Index" class="nav-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Prospects" ? "active" : "")">
+                    <span class="nav-icon">◎</span> Prospects
+                </a>
+                <a asp-controller="ReplyCampaigns" asp-action="Index" class="nav-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "ReplyCampaigns" ? "active" : "")">
+                    <span class="nav-icon">↩</span> Reply Campaigns
+                </a>
+
+                <span class="nav-label">System</span>
+                <a asp-controller="Jobs" asp-action="Index" class="nav-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Jobs" ? "active" : "")">
+                    <span class="nav-icon">⚙</span> Background Jobs
+                </a>
+                                <a href="/hangfire" class="nav-link">
+                    <span class="nav-icon">⏱</span> Hangfire
+                </a>
+                <a asp-controller="Logs" asp-action="Index" class="nav-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Logs" ? "active" : "")">
+                    <span class="nav-icon">📜</span> Logs
+                </a>
+                <a asp-controller="Settings" asp-action="Index" class="nav-link @(ViewContext.RouteData.Values["controller"]?.ToString() == "Settings" ? "active" : "")">
+                    <span class="nav-icon">⚙</span> Settings
+                </a>
+            </nav>
+
+            <div class="sidebar-foot">
+                <span class="dot"></span> Private operator console
+            </div>
+        </aside>
+
+        <div class="main">
+            <header class="topbar">
+                <span class="crumb">TrafficHunt / @ViewData["Title"]</span>
+                <span class="spacer"></span>
+                <a asp-controller="Settings" asp-action="Index" class="btn btn-sm btn-ghost" title="Settings — API keys & endpoints">⚙ Settings</a>
+                <button id="startTour" class="btn btn-sm btn-ghost" type="button" title="Show guided tour">? Tour</button>
+                <span class="status-chip"><span class="dot dot-green"></span> Online</span>
+            </header>
+
+            <main class="content">
+                @if (TempData["Success"] is string success)
+                {
+                    <div class="banner banner-success">@success</div>
+                }
+                @if (TempData["Error"] is string error)
+                {
+                    <div class="banner banner-error">@error</div>
+                }
+
+                @RenderBody()
+            </main>
+        </div>
+    </div>
+
+    <script src="~/lib/introjs/intro.min.js" asp-append-version="true"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    <script src="~/js/tour.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

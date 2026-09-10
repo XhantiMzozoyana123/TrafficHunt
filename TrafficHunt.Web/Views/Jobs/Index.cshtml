@@ -1,0 +1,188 @@
+@model JobsIndexViewModel
+@{
+    ViewData["Title"] = "Background Jobs";
+}
+
+<div class="page-title">Background Jobs</div>
+<p class="page-sub">Hangfire pipeline — discovery, analysis, and outreach run as background jobs that survive app restarts.</p>
+
+<div class="grid cards" style="margin-bottom:18px" id="statCards">
+    <div class="card stat-card"><div class="stat-value" id="s-server">@Model.ServerCount</div><div class="stat-label">Workers</div></div>
+    <div class="card stat-card"><div class="stat-value tone-cyan" id="s-enqueued">@Model.Enqueued</div><div class="stat-label">Enqueued</div></div>
+    <div class="card stat-card"><div class="stat-value tone-amber" id="s-scheduled">@Model.Scheduled</div><div class="stat-label">Scheduled</div></div>
+    <div class="card stat-card"><div class="stat-value" id="s-processing">@Model.Processing</div><div class="stat-label">Processing</div></div>
+    <div class="card stat-card"><div class="stat-value tone-green" id="s-succeeded">@Model.Succeeded</div><div class="stat-label">Succeeded</div></div>
+    <div class="card stat-card"><div class="stat-value tone-red" id="s-failed">@Model.Failed</div><div class="stat-label">Failed</div></div>
+</div>
+
+<div class="card" style="margin-bottom:18px">
+    <div class="card-header">
+        <h3 class="card-title">Active jobs</h3>
+        <span class="small muted" id="active-updated">—</span>
+    </div>
+    <div id="activeJobsBody">
+        @if (Model.ActiveJobs.Count == 0)
+        {
+            <p class="small muted" id="activeEmpty">No enqueued, processing, scheduled or failed jobs right now.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="table">
+                    <thead><tr><th>Id</th><th>Method</th><th>State</th><th>Detail</th><th></th></tr></thead>
+                    <tbody id="activeJobsRows">
+                        @foreach (var j in Model.ActiveJobs)
+                        {
+                            <tr data-jid="@j.JobId">
+                                <td class="small muted">@j.JobId</td>
+                                <td class="small" style="max-width:300px">@j.Method</td>
+                                <td><span class="badge @(j.State == "Failed" ? "tone-red" : "")">@j.State</span></td>
+                                <td class="small muted" style="max-width:220px">@j.Detail</td>
+                                <td class="num" style="white-space:nowrap">
+                                    <form asp-action="KillJob" method="post" asp-antiforgery="true" class="inline-form"
+                                          onsubmit="return confirm('Kill job @j.JobId? Running jobs are interrupted; queued ones are removed.')">
+                                        <input type="hidden" name="jobId" value="@j.JobId" />
+                                        <button class="btn btn-danger" type="submit">Kill / Delete</button>
+                                    </form>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <form asp-action="ClearSucceeded" method="post" asp-antiforgery="true" style="margin-top:10px">
+                <button class="btn btn-ghost" type="submit">Clear succeeded history</button>
+            </form>
+        }
+    </div>
+</div>
+
+<div class="grid cols-2" style="margin-bottom:18px">
+    <div class="card">
+        <h3 class="card-title" style="margin-bottom:10px">Queues</h3>
+        @if (Model.Queues.Count == 0)
+        {
+            <p class="small muted">No active queues.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="table">
+                    <thead><tr><th>Queue</th><th class="num">Length</th></tr></thead>
+                    <tbody>
+                        @foreach (var q in Model.Queues)
+                        {
+                            <tr>
+                                <td><span class="badge">@q.Queue</span></td>
+                                <td class="num">@q.Length</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+
+    <div class="card">
+        <h3 class="card-title" style="margin-bottom:10px">Recurring jobs</h3>
+        @if (Model.RecurringJobs.Count == 0)
+        {
+            <p class="small muted">No recurring jobs scheduled.</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="table">
+                    <thead><tr><th>Job</th><th>Cron</th><th>Next</th></tr></thead>
+                    <tbody>
+                        @foreach (var r in Model.RecurringJobs)
+                        {
+                            <tr>
+                                <td class="small">@r.Id</td>
+                                <td class="small muted">@r.Cron</td>
+                                <td class="small muted">@r.Next</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="card">
+    <h3 class="card-title" style="margin-bottom:10px">Recent successful jobs</h3>
+    @if (Model.RecentJobs.Count == 0)
+    {
+        <p class="small muted">No completed jobs yet. Run an extraction to get started.</p>
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="table">
+                <thead><tr><th>Id</th><th>Method</th><th>State</th><th>Total</th><th>Finished</th></tr></thead>
+                <tbody>
+                    @foreach (var j in Model.RecentJobs)
+                    {
+                        <tr>
+                            <td class="small muted">@j.JobId</td>
+                            <td class="small" style="max-width:360px">@j.Method</td>
+                            <td><span class="badge">@j.State</span></td>
+                            <td class="num">@j.TotalDuration</td>
+                            <td class="small muted">@j.Ended</td>                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@section Scripts {
+<script>
+    async function refreshJobs() {
+        try {
+            const r = await fetch('/jobs/getstatus');
+            if (!r.ok) return;
+            const d = await r.json();
+            document.getElementById('s-server').textContent = d.serverCount;
+            document.getElementById('s-enqueued').textContent = d.enqueued;
+            document.getElementById('s-scheduled').textContent = d.scheduled;
+            document.getElementById('s-processing').textContent = d.processing;
+            document.getElementById('s-succeeded').textContent = d.succeeded;
+            document.getElementById('s-failed').textContent = d.failed;
+            document.getElementById('active-updated').textContent = 'updated ' + new Date().toLocaleTimeString();
+
+            const body = document.getElementById('activeJobsBody');
+            if (!d.active.length) {
+                body.innerHTML = '<p class="small muted" id="activeEmpty">No enqueued, processing, scheduled or failed jobs right now.</p>';
+                return;
+            }
+            let html = '<div class="table-wrap"><table class="table"><thead><tr><th>Id</th><th>Method</th><th>State</th><th>Detail</th><th></th></tr></thead><tbody>';
+            for (const j of d.active) {
+                const badgeCls = j.state === 'Failed' ? 'badge tone-red' : 'badge';
+                html += '<tr data-jid="' + j.id + '">'
+                    + '<td class="small muted">' + j.id + '</td>'
+                    + '<td class="small" style="max-width="300px">' + (j.method||'').substring(0,80) + '</td>'
+                    + '<td><span class="' + badgeCls + '">' + j.state + '</span></td>'
+                    + '<td class="small muted" style="max-width:220px">' + (j.detail||'') + '</td>'
+                    + '<td class="num" style="white-space:nowrap">'
+                    + '<button class="btn btn-danger btn-sm" onclick="killJob(\'' + j.id + '\')">Kill</button>'
+                    + '</td></tr>';
+            }
+            html += '</tbody></table></div>';
+            html += '<form asp-action="ClearSucceeded" method="post" asp-antiforgery="true" style="margin-top:10px"><button class="btn btn-ghost" type="submit">Clear succeeded history</button></form>';
+            body.innerHTML = html;
+        } catch (e) { /* transient */ }
+    }
+    function killJob(id) {
+        if (!confirm('Kill job ' + id + '?')) return;
+        const f = document.createElement('form'); f.method = 'post'; f.action = '/jobs/killjob';
+        const h = document.createElement('input'); h.type='hidden'; h.name='jobId'; h.value=id; f.appendChild(h);
+        const t = document.createElement('input'); t.type='hidden'; t.name='__RequestVerificationToken'; t.value=document.querySelector('input[name=__RequestVerificationToken]')?.value||''; f.appendChild(t);
+        document.body.appendChild(f); f.submit();
+    }
+    setInterval(refreshJobs, 5000);
+    refreshJobs();
+</script>
+}
+</div>

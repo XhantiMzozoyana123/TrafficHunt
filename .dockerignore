@@ -1,0 +1,34 @@
+# Build / publish output
+**/bin/
+**/obj/
+
+# Version control
+.git/
+.gitignore
+.gitattributes
+
+# IDE
+.vscode/
+.idea/
+*.user
+
+# Logs
+**/*.log
+**/detached.log
+**/run*.log
+**/fg*.log
+
+# Local runtime artifacts
+q.csx
+*.csx
+
+# OS junk
+Thumbs.db
+.DS_Store
+
+# NOTE: appsettings*.json is intentionally NOT excluded here. The build needs
+# TrafficHunt.Web/appsettings*.json to restore/publish correctly, and the file is
+# copied into the runtime stage. At deploy time a host-mounted volume
+# (./config/appsettings.json) OVERRIDES it, so real secrets live on the VPS host,
+# not in the image.
+.env
