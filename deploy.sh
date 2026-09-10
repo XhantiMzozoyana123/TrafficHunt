@@ -76,6 +76,14 @@ case "$(grep -E '^DB_PASSWORD=' .env | head -n 1 | cut -d= -f2- || true)" in
 esac
 
 # ---- 3. appsettings.json bootstrap (OAuth token persistence) ----
+# NOTE: if the app was ever started before this file existed, Docker creates
+# config/appsettings.json as a root-owned DIRECTORY (it bind-mounts the path).
+# Detect that case and remove it before copying the example file.
+if [ -d config/appsettings.json ]; then
+  log "Removing stray directory config/appsettings.json (created by Docker on an earlier run)..."
+  rm -rf config/appsettings.json 2>/dev/null || sudo rm -rf config/appsettings.json || \
+    die "config/appsettings.json is a root-owned directory and could not be removed. Run: sudo rm -rf config/appsettings.json"
+fi
 if [ ! -f config/appsettings.json ]; then
   [ -f config/appsettings.json.example ] || die "config/appsettings.json.example not found."
   mkdir -p config
