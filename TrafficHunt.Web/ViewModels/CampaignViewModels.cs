@@ -65,4 +65,6 @@ public class CampaignPlanViewModel
     public int? VideosPerKeyword { get; set; } = 3;
     public CampaignPlan? Plan { get; set; }
     public string? Error { get; set; }
+    /// <summary>Hangfire job id tracking the background AI planning run.</summary>
+    public string? PlanningId { get; set; }
 }

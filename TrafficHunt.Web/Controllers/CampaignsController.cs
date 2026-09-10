@@ -178,28 +178,47 @@ public class CampaignsController : Controller
         return RedirectToAction(nameof(Index));
     }
 
-    // ---- AI-assisted planning (form post → AI plan) ----
+    // ---- AI-assisted planning (enqueue job -> poll, never blocks on cold LLM) ----
     [HttpGet]
     public IActionResult Plan() => View(new CampaignPlanViewModel());
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Plan(CampaignPlanViewModel model, CancellationToken ct)
+    public IActionResult Plan(CampaignPlanViewModel model, CancellationToken ct)
     {
         if (!ModelState.IsValid) return View(model);
 
-        try
+        // Enqueue the single-LLM-call planning job and return immediately: the
+        // remote LLM cold-loads qwen3.5 (60s+), which exceeds HTTP timeouts when
+        // done inline. The page polls GetPlanStatus until the job completes.
+        var planningId = Guid.NewGuid().ToString("N");
+        BackgroundJob.Enqueue<CampaignPlanningJob>(
+            job => job.RunAsync(planningId, model.Description, default(CancellationToken)));
+        model.PlanningId = planningId;
+        model.VideosPerKeyword ??= 3;
+        TempData["Info"] = "AI planning queued — generating your campaign in the background…";
+        return View(model);
+    }
+
+    /// <summary>JSON endpoint for planning-progress polling (every 5s from the UI).</summary>
+    [HttpGet]
+    public IActionResult GetPlanStatus(string planningId)
+    {
+        var result = CampaignPlanningJob.GetResult(planningId ?? string.Empty);
+        if (result is null)
+            return Json(new { complete = false });
+        if (!result.IsSuccess)
+            return Json(new { complete = true, success = false, error = result.Error });
+        return Json(new
         {
-            var plan = await _planner.PlanAsync(model.Description, ct);
-            model.Plan = plan;
-            model.VideosPerKeyword ??= 3;
-            return View(model);
-        }
-        catch (Exception ex)
-        {
-            model.Error = $"AI planning failed: {ex.Message}";
-            return View(model);
-        }
+            complete = true,
+            success = true,
+            campaignId = result.CampaignId,
+            name = result.Plan?.Draft?.Name,
+            productName = result.Plan?.Draft?.ProductName,
+            keywords = result.Plan?.Draft?.Keywords,
+            problems = result.Plan?.Draft?.Problems
+        });
     }
 
     /// <summary>

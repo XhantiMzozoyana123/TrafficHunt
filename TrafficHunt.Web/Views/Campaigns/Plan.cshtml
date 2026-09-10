@@ -33,6 +33,44 @@
     <div class="banner banner-error">@Model.Error</div>
 }
 
+@if (!string.IsNullOrEmpty(Model.PlanningId) && Model.Plan == null && string.IsNullOrEmpty(Model.Error))
+{
+    <div class="card" id="planning-progress">
+        <div class="card-header">
+            <h3 class="card-title">Generating your campaign…</h3>
+            <span class="badge active">AI working</span>
+        </div>
+        <p class="page-sub">The AI is drafting product, audience, problems and keywords. This page updates automatically — no need to resubmit.</p>
+        <div class="banner" id="planning-status">Queued — waiting for the AI worker…</div>
+        <div class="btn-row" style="margin-top:8px">
+            <a class="btn btn-ghost" asp-action="Index">Back to campaigns</a>
+        </div>
+    </div>
+    <script>
+        (function () {
+            var id = "@Model.PlanningId";
+            var el = document.getElementById("planning-status");
+            var tries = 0;
+            var timer = setInterval(function () {
+                tries++;
+                fetch("@Url.Action("GetPlanStatus", "Campaigns")?planningId=" + encodeURIComponent(id))
+                    .then(function (r) { return r.json(); })
+                    .then(function (s) {
+                        if (!s.complete) {
+                            el.textContent = "Still working… (" + tries * 5 + "s elapsed)";
+                            return;
+                        }
+                        clearInterval(timer);
+                        if (s.success) { location.reload(); }
+                        else { el.textContent = "AI planning failed: " + (s.error || "unknown error"); el.className = "banner banner-error"; }
+                    })
+                    .catch(function () { el.textContent = "Waiting for status… (retrying)"; });
+                if (tries > 120) { clearInterval(timer); el.textContent = "Taking unusually long — check /jobs for the planning job status."; }
+            }, 5000);
+        })();
+    </script>
+}
+
 @if (Model.Plan != null)
 {
     var draft = Model.Plan.Draft;

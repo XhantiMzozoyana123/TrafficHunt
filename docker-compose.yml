@@ -28,15 +28,18 @@ services:
       ASPNETCORE_URLS: "http://+:8080"
       AutoMigrate: "true"
       DisableHttpsRedirect: "true"
+      # Writable runtime config: appsettings.json inside the image is owned by the
+      # non-root app user and may be overlaid by mounts; the OAuth token store
+      # writes here instead so it always lands on the ./config volume.
+      AppSettingsPath: "/app/config/appsettings.json"
       # Default connection string; host comes from DB_HOST. Override in .env if your
       # server runs MySQL elsewhere (options A vs B above).
       ConnectionStrings__DefaultConnection: "Server=${DB_HOST:-db};Port=${DB_PORT:-3306};Database=${DB_NAME:-traffichunt};Uid=${DB_USER:-traffichunt};Pwd=${DB_PASSWORD:-traffichunt_secret};"
     volumes:
-      # Mount the config file so the app can PERSIST Google OAuth tokens back into
-      # it at run time (the app rewrites appsettings.json on token exchange/refresh).
-      # MUST be read-write (no :ro) or OAuth refresh will fail. Create
-      # ./config/appsettings.json on the host first (see config/README.md).
-      - ./config/appsettings.json:/app/appsettings.json
+      # Mount the config DIRECTORY (not the file) so Docker never creates a
+      # root-owned directory at ./config/appsettings.json when the host file
+      # is missing. The app reads/writes $AppSettingsPath inside this dir.
+      - ./config:/app/config:rw
     restart: unless-stopped
     depends_on:
       db:

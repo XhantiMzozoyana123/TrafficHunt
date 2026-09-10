@@ -1,9 +1,11 @@
+using Hangfire;
 using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TrafficHunt.Application.Dtos;
 using TrafficHunt.Application.Interfaces;
+using TrafficHunt.Infrastructure.Jobs;
 using TrafficHunt.Web.ViewModels;
 
 namespace TrafficHunt.Web.Controllers;
@@ -152,7 +154,10 @@ public class ReplyCampaignsController : Controller
         };
 
         var campaign = await _service.CreateAsync(request, ct);
-        TempData["Success"] = $"Reply campaign \"{campaign.Name}\" created as a draft.";
+        // Template generation is ONE bounded LLM call on the "default" queue —
+        // never inline: the remote LLM cold-loads (60s+) and would time out HTTP.
+        BackgroundJob.Enqueue<ReplyTemplateJob>(job => job.RunAsync(campaign.Id, default(CancellationToken)));
+        TempData["Success"] = $"Reply campaign \"{campaign.Name}\" created as a draft. AI templates are generating in the background.";
         return RedirectToAction(nameof(Details), new { id = campaign.Id });
     }
 
@@ -204,12 +209,13 @@ public class ReplyCampaignsController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ApproveAll(int id, CancellationToken ct)
+    public IActionResult ApproveAll(int id, CancellationToken ct)
     {
-        var count = await _service.ApproveAllAsync(id, ct);
-        TempData["Success"] = count == 0
-            ? "No pending replies to approve."
-            : $"{count} replies drafted and approved.";
+        // Chunked: enqueue a 5-record drafting job on the "ai" queue instead of
+        // drafting inline — a cold LLM makes inline approval time out HTTP.
+        // The job self-chains until no Pending records remain.
+        BackgroundJob.Enqueue<ReplyDraftingJob>(job => job.RunAsync(id, default(CancellationToken), ReplyDraftingJob.DefaultBatchSize));
+        TempData["Success"] = "AI drafting queued — replies will be drafted + approved in small batches. Refresh to watch progress.";
         return RedirectToAction(nameof(Details), new { id });
     }
 

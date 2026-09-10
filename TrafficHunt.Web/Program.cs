@@ -37,29 +37,84 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
 // ---- Settings persistence (API keys + OAuth tokens in appsettings.json) ----
+// Container-friendly: AppSettingsPath env var points at the mounted volume
+// (./config -> /app/config); localhost default keeps existing behaviour.
+// If the configured path is missing, seed it from the bundled appsettings.json
+// so the app always has a writable file. Also registers the mounted file as an
+// extra JSON config source so values persisted there (OAuth tokens, API keys)
+// feed back into builder.Configuration at runtime.
+var settingsPath = builder.Configuration["AppSettingsPath"]
+    ?? Path.Combine(builder.Environment.ContentRootPath, "appsettings.json");
+try
+{
+    if (Directory.Exists(settingsPath))
+        Directory.Delete(settingsPath, recursive: true);
+    if (!File.Exists(settingsPath))
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
+        var bundled = Path.Combine(builder.Environment.ContentRootPath, "appsettings.json");
+        if (File.Exists(bundled) && !string.Equals(bundled, settingsPath, StringComparison.OrdinalIgnoreCase))
+            File.Copy(bundled, settingsPath);
+        else
+            await File.WriteAllTextAsync(settingsPath, "{}\n");
+    }
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine($"WARNING: could not prepare settings file '{settingsPath}': {ex.Message}");
+}
+if (!string.Equals(settingsPath, Path.Combine(builder.Environment.ContentRootPath, "appsettings.json"),
+    StringComparison.OrdinalIgnoreCase))
+{
+    builder.Configuration.AddJsonFile(settingsPath, optional: true, reloadOnChange: true);
+}
 builder.Services.AddSingleton<TrafficHunt.Application.Interfaces.ISettingsStoreFactory>(_ =>
-    new TrafficHunt.Web.Services.AppSettingsStoreFactory(
-        Path.Combine(builder.Environment.ContentRootPath, "appsettings.json")));
+    new TrafficHunt.Web.Services.AppSettingsStoreFactory(settingsPath));
 
 // ---- Hangfire: background job orchestration ----
 builder.Services.AddHangfire(config => config
     .UseRecommendedSerializerSettings()
     .UseInMemoryStorage());
 
-// Add Hangfire server with queue configuration
-// Queues: youtube (fetching), ai (Ollama - limited workers), outreach, notifications, maintenance, default
+// Add Hangfire servers with per-queue worker limits so one workload can never
+// starve the others. This is what stops LLM timeouts from cascading:
+//   - The single remote Ollama host can only serve ~1 inference at a time
+//     (llama3 already OOM-killed under concurrency) — so the "ai" queue gets
+//     exactly 1 worker: chunks run strictly serially, never in parallel.
+//   - YouTube fetching stays fast on its own workers; notifications/maintenance
+//     keep their own lanes; "default" is the catch-all (incl. AI planning +
+//     template generation single-call jobs, which are chunk-safe by design).
 builder.Services.AddHangfireServer(options =>
 {
-    options.WorkerCount = 10;
-    options.Queues = new[] { "youtube", "ai", "outreach", "notifications", "maintenance", "default" };
+    options.ServerName = "youtube";
+    options.WorkerCount = 6;
+    options.Queues = new[] { "youtube" };
+    options.SchedulePollingInterval = TimeSpan.FromSeconds(5);
+});
+builder.Services.AddHangfireServer(options =>
+{
+    options.ServerName = "ai";
+    options.WorkerCount = 1;
+    options.Queues = new[] { "ai" };
+    options.SchedulePollingInterval = TimeSpan.FromSeconds(5);
+});
+builder.Services.AddHangfireServer(options =>
+{
+    options.ServerName = "misc";
+    options.WorkerCount = 3;
+    options.Queues = new[] { "outreach", "notifications", "maintenance", "default" };
     options.SchedulePollingInterval = TimeSpan.FromSeconds(5);
 });
 
 // Register all job classes (so they can be resolved by Hangfire via DI)
 builder.Services.AddScoped<YouTubeDiscoveryJob>();
+builder.Services.AddScoped<KeywordDiscoveryJob>();
 builder.Services.AddScoped<CommentImportJob>();
 builder.Services.AddScoped<CommentAnalysisJob>();
 builder.Services.AddScoped<OpportunityDetectionJob>();
+builder.Services.AddScoped<CampaignPlanningJob>();
+builder.Services.AddScoped<ReplyTemplateJob>();
+builder.Services.AddScoped<ReplyDraftingJob>();
 builder.Services.AddScoped<NotificationJob>();
 builder.Services.AddScoped<ChannelMonitoringJob>();
 builder.Services.AddScoped<MaintenanceJob>();

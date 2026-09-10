@@ -7,7 +7,9 @@ using TrafficHunt.Domain.Entities;
 namespace TrafficHunt.Infrastructure.Jobs;
 
 /// <summary>
-/// Comment import job — fetches comments from a YouTube video via the Data API.
+/// Comment import job — fetches comments from a YouTube video via the Data API,
+/// then enqueues them for AI qualification in SMALL CHUNKS (default 5 per job)
+/// on the "ai" queue instead of one job per comment.
 /// Runs in the "youtube" queue.
 /// </summary>
 [Queue("youtube")]
@@ -28,9 +30,11 @@ public class CommentImportJob
     }
 
     /// <summary>
-    /// Fetch comments for a video and enqueue analysis for each new comment.
+    /// Fetch comments for a video and enqueue AI analysis in small chunks.
+    /// Chunking bounds each downstream job to a few LLM calls so no single job
+    /// can time out, and Hangfire retries stay cheap (re-runs one chunk, not all).
     /// </summary>
-    public async Task RunAsync(int campaignId, string youTubeVideoId, string videoTitle, int commentsPerVideo, CancellationToken ct)
+    public async Task RunAsync(int campaignId, string youTubeVideoId, string videoTitle, int commentsPerVideo, CancellationToken ct, int batchSize = CommentAnalysisJob.DefaultBatchSize)
     {
         ct.ThrowIfCancellationRequested();
         _logger.LogInformation("Importing comments for video {VideoId}", youTubeVideoId);
@@ -46,19 +50,27 @@ public class CommentImportJob
             throw; // Let Hangfire retry
         }
 
+        // Pre-filter already-qualified comments so chunks contain only real work.
+        var fresh = new List<CollectedComment>(comments.Count);
         foreach (var comment in comments)
         {
             ct.ThrowIfCancellationRequested();
-
-            // Skip if already qualified
             if (await _prospects.ExistsAsync(campaignId, comment.YouTubeCommentId))
                 continue;
-
-            // Enqueue AI analysis for this comment
-            BackgroundJob.Enqueue<CommentAnalysisJob>(
-                job => job.RunAsync(campaignId, youTubeVideoId, videoTitle, comment, default(CancellationToken)));
+            fresh.Add(comment);
         }
 
-        _logger.LogInformation("Imported {Count} comments for video {VideoId}", comments.Count, youTubeVideoId);
+        // Enqueue one ai-queue job per chunk (strictly serial: ai queue = 1 worker).
+        var size = batchSize <= 0 ? CommentAnalysisJob.DefaultBatchSize : batchSize;
+        for (var i = 0; i < fresh.Count; i += size)
+        {
+            ct.ThrowIfCancellationRequested();
+            var chunk = fresh.GetRange(i, Math.Min(size, fresh.Count - i));
+            BackgroundJob.Enqueue<CommentAnalysisJob>(
+                job => job.RunBatchAsync(campaignId, youTubeVideoId, videoTitle, chunk, default(CancellationToken)));
+        }
+
+        _logger.LogInformation("Imported {Total} comments for video {VideoId} -> {Chunks} analysis chunk(s) ({Fresh} new)",
+            comments.Count, youTubeVideoId, (fresh.Count + size - 1) / size, fresh.Count);
     }
 }

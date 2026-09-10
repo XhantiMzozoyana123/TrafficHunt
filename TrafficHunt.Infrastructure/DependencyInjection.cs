@@ -49,12 +49,19 @@ public static class DependencyInjection
         });
 
         // ---- Ollama (AI) ----
-        // Short timeout: if the LLM host is down, fail fast so the reply loop falls
-        // back to templates immediately instead of stalling for minutes per record.
+        // Long timeout: the remote LLM cold-loads the 6.6GB qwen3.5 model
+        // (60s+ on first hit) and comment qualification retries once inside
+        // OllamaService, so fail-fast here would cause false AI failures.
+        // HTTP requests never block on the LLM anyway — all AI work runs in
+        // Hangfire jobs (ai queue, single worker) — except AI campaign
+        // planning, which is also chunk-safe (one LLM call).
+        // Ollama:TimeoutSeconds (env Ollama__TimeoutSeconds) overrides this.
+        var ollamaTimeout = TimeSpan.FromSeconds(
+            configuration.GetValue<int?>("Ollama:TimeoutSeconds") ?? 300);
         services.AddHttpClient<IOllamaService, OllamaService>(client =>
         {
             client.BaseAddress = new Uri(configuration["Ollama:BaseUrl"] ?? "http://localhost:11434");
-            client.Timeout = TimeSpan.FromSeconds(30);
+            client.Timeout = ollamaTimeout;
         });
 
         // ---- Hangfire background jobs ----

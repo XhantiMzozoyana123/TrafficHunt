@@ -147,8 +147,8 @@ resulting prospects and reply campaigns in the console.
 
    ```json
    "Ollama": {
-     "BaseUrl": "http://63.141.255.202:11434",
-     "Model": "llama3"
+     "BaseUrl": "http://46.202.170.203:11434",
+     "Model": "qwen3.5"
    }
    ```
 
@@ -242,3 +242,4 @@ large-scale work, and the job page shows progress.
 
 The AI can search, analyze, score, and generate replies — but it can never publish outreach
 automatically. The operator controls the final send.
+

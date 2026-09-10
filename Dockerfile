@@ -32,6 +32,9 @@ RUN touch /app/appsettings.json && chown $APP_UID /app/appsettings.json
 # The base image defaults to the non-root $APP_UID user, which cannot bind to
 # privileged ports (<1024). So the app listens on 8080 (matching
 # ASPNETCORE_URLS in docker-compose.yml), NOT port 80.
+# /app/config is the mounted host ./config dir (OAuth tokens + runtime settings
+# persist here); pre-create it writable by the app user so the OAuth store can
+# seed/copy appsettings.json there on first boot.
 EXPOSE 8080
 
 # Non-root user recommended by Microsoft; safer in production.
