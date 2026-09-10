@@ -29,8 +29,10 @@ RUN apt-get update \
 # read-write mount works even if the host file is root-owned/missing.
 RUN touch /app/appsettings.json && chown $APP_UID /app/appsettings.json
 
-# ASP.NET Core listens on port 80 by default in the runtime image.
-EXPOSE 80
+# The base image defaults to the non-root $APP_UID user, which cannot bind to
+# privileged ports (<1024). So the app listens on 8080 (matching
+# ASPNETCORE_URLS in docker-compose.yml), NOT port 80.
+EXPOSE 8080
 
 # Non-root user recommended by Microsoft; safer in production.
 # NOTE: $APP_UID is defined by the base image — only usable after it is set,

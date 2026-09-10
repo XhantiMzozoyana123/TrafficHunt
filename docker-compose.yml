@@ -18,12 +18,14 @@ services:
     image: traffichunt:latest
     container_name: traffichunt
     ports:
-      - "${PublishPort:-8080}:80"
+      - "${PublishPort:-8080}:8080"
     env_file:
       - .env
     environment:
       # Overrides with sensible container defaults (still overridable by .env).
-      ASPNETCORE_URLS: "http://+:80"
+      # NOTE: the runtime image runs as non-root ($APP_UID), which cannot bind
+      # privileged ports (<1024) — so the app listens on 8080, not 80.
+      ASPNETCORE_URLS: "http://+:8080"
       AutoMigrate: "true"
       DisableHttpsRedirect: "true"
       # Default connection string; host comes from DB_HOST. Override in .env if your
@@ -40,8 +42,7 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      # wget ships with the aspnet runtime image (curl does not).
-      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:80/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/ || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
