@@ -28,7 +28,7 @@ services:
       DisableHttpsRedirect: "true"
       # Default connection string; host comes from DB_HOST. Override in .env if your
       # server runs MySQL elsewhere (options A vs B above).
-      ConnectionStrings__DefaultConnection: "Server=${DB_HOST:-db};Port=3306;Database=${DB_NAME:-traffichunt};Uid=${DB_USER:-traffichunt};Pwd=${DB_PASSWORD:-traffichunt_secret};"
+      ConnectionStrings__DefaultConnection: "Server=${DB_HOST:-db};Port=${DB_PORT:-3306};Database=${DB_NAME:-traffichunt};Uid=${DB_USER:-traffichunt};Pwd=${DB_PASSWORD:-traffichunt_secret};"
     volumes:
       # Mount the config file so the app can PERSIST Google OAuth tokens back into
       # it at run time (the app rewrites appsettings.json on token exchange/refresh).
