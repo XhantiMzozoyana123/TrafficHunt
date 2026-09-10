@@ -21,7 +21,11 @@ public static class DependencyInjection
         var serverVersion = new MySqlServerVersion(new Version(8, 0, 39));
 
         services.AddDbContext<TrafficHuntDbContext>(options =>
-            options.UseMySql(connectionString, serverVersion));
+            options.UseMySql(connectionString, serverVersion,
+                mySqlOptions => mySqlOptions.EnableRetryOnFailure(
+                    maxRetryCount: 10,
+                    maxRetryDelay: TimeSpan.FromSeconds(10),
+                    errorNumbersToAdd: null)));
 
         // ---- Repositories ----
         services.AddScoped<ICampaignRepository, CampaignRepository>();

@@ -37,7 +37,8 @@ services:
       - ./config/appsettings.json:/app/appsettings.json
     restart: unless-stopped
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     healthcheck:
       # wget ships with the aspnet runtime image (curl does not).
       test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:80/ || exit 1"]
@@ -58,6 +59,14 @@ services:
       MYSQL_PASSWORD: ${DB_PASSWORD:-traffichunt_secret}
     ports:
       - "3306:3306"
+    healthcheck:
+      # Require DB readiness before the app may start (prevents migration races
+      # on first boot when MySQL is still initializing).
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "--silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
     volumes:
       - mysql_data:/var/lib/mysql
     restart: unless-stopped
