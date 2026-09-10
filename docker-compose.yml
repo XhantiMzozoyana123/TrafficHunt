@@ -1,4 +1,4 @@
-version: "3.9"
+# (no `version:` key — obsolete in Compose v2)
 
 # TrafficHunt — container layout.
 #
