@@ -20,13 +20,14 @@ RUN dotnet publish "TrafficHunt.Web/TrafficHunt.Web.csproj" \
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
 
-# wget is needed for the compose healthcheck (not present in the minimal runtime image).
-USER root
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends wget \
-    && rm -rf /var/lib/apt/lists/*
+# NOTE: no apt-get here on purpose. The VPS Ubuntu archives are extremely
+# slow from some hosts (your build spent 7-22 min in `apt-get update`
+# fetching archive.ubuntu.com). The compose healthcheck uses bash
+# /dev/tcp (built-in, no wget/curl package needed), so nothing needs
+# installing in the runtime image.
 # Pre-create an empty appsettings.json owned by the app user so the
 # read-write mount works even if the host file is root-owned/missing.
+USER root
 RUN touch /app/appsettings.json && chown $APP_UID /app/appsettings.json
 
 # The base image defaults to the non-root $APP_UID user, which cannot bind to
