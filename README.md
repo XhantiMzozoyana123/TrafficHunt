@@ -147,7 +147,7 @@ resulting prospects and reply campaigns in the console.
 
    ```json
    "Ollama": {
-     "BaseUrl": "http://46.202.170.203:11434",
+     "BaseUrl": "https://llm.processzero.xyz",
      "Model": "qwen3.5"
    }
    ```
